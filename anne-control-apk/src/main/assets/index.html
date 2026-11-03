@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>AnneControl</title>
+<style>
+  :root {
+    --bg: #020617;
+    --card: #0f172a;
+    --card-alt: #131e36;
+    --border: #1e293b;
+    --text: #f8fafc;
+    --muted: #94a3b8;
+    --sky: #38bdf8;
+    --indigo: #818cf8;
+    --emerald: #34d399;
+    --amber: #fbbf24;
+    --rose: #fb7185;
+  }
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: 82px;
+  }
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(2, 6, 23, 0.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #0ea5e9, #6366f1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 16px;
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(14, 165, 233, 0.3);
+  }
+  .brand-title {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--sky);
+    font-weight: 600;
+  }
+  .refresh-btn {
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 9px;
+    padding: 7px 11px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .container {
+    padding: 14px 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 15px;
+  }
+  .hero-card {
+    background: linear-gradient(145deg, rgba(14, 165, 233, 0.16), rgba(99, 102, 241, 0.12), #0f172a);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 18px;
+    padding: 16px;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+  .badge-sky { background: rgba(56,189,248,0.16); color: var(--sky); border: 1px solid rgba(56,189,248,0.3); }
+  .badge-ok { background: rgba(52,211,153,0.16); color: var(--emerald); border: 1px solid rgba(52,211,153,0.3); }
+  .badge-warn { background: rgba(251,191,36,0.16); color: var(--amber); border: 1px solid rgba(251,191,36,0.3); }
+  .badge-high { background: rgba(251,113,133,0.16); color: var(--rose); }
+  h2 { margin: 6px 0 6px; font-size: 17px; font-weight: 800; }
+  h3 { margin: 0 0 5px; font-size: 15px; font-weight: 700; }
+  p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+  .btn {
+    width: 100%;
+    border: none;
+    border-radius: 12px;
+    padding: 13px 16px;
+    font-size: 13.5px;
+    font-weight: 800;
+    cursor: pointer;
+    margin-top: 12px;
+    transition: transform 0.08s ease, opacity 0.15s;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary {
+    background: linear-gradient(90deg, #38bdf8, #818cf8);
+    color: #020617;
+    box-shadow: 0 6px 18px rgba(56, 189, 248, 0.25);
+  }
+  .btn-emerald {
+    background: var(--emerald);
+    color: #020617;
+  }
+  .btn-amber {
+    background: var(--amber);
+    color: #020617;
+  }
+  .btn-outline {
+    background: var(--card-alt);
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-weight: 700;
+  }
+  .btn-sm {
+    width: auto;
+    margin-top: 0;
+    padding: 7px 12px;
+    font-size: 11.5px;
+    border-radius: 9px;
+  }
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .stat-val {
+    font-size: 19px;
+    font-weight: 800;
+    margin-top: 4px;
+    color: #fff;
+  }
+  .stat-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+  }
+  .bar-bg {
+    width: 100%;
+    height: 7px;
+    background: #1e293b;
+    border-radius: 99px;
+    overflow: hidden;
+    margin-top: 7px;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.3s ease;
+  }
+  .perm-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .perm-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .pkg-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .pkg-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .pkg-name { font-size: 13.5px; font-weight: 700; color: #fff; }
+  .pkg-id { font-size: 10.5px; font-family: monospace; color: var(--muted); word-break: break-all; }
+  .toast-banner {
+    background: rgba(52, 211, 153, 0.14);
+    border: 1px solid rgba(52, 211, 153, 0.4);
+    color: #a7f3d0;
+    padding: 11px 13px;
+    border-radius: 12px;
+    font-size: 12.5px;
+    font-weight: 600;
+    display: none;
+  }
+  .bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 66px;
+    background: rgba(9, 14, 28, 0.96);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    z-index: 30;
+  }
+  .nav-item {
+    border: none;
+    background: none;
+    color: var(--muted);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+  .nav-item.active {
+    color: var(--sky);
+  }
+  .nav-icon { font-size: 17px; line-height: 1; }
+  .pill-row {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .pill {
+    border: 1px solid var(--border);
+    background: var(--card-alt);
+    color: var(--muted);
+    border-radius: 99px;
+    padding: 6px 12px;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .pill.active {
+    background: rgba(56,189,248,0.18);
+    color: var(--sky);
+    border-color: rgba(56,189,248,0.45);
+  }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">AC</div>
+    <div>
+      <div class="brand-title">AnneControl</div>
+      <div class="brand-sub" id="topModelLabel">Huawei P20 Lite · System Access</div>
+    </div>
+  </div>
+  <button class="refresh-btn" onclick="refreshAll()">↻ Refresh</button>
+</div>
+
+<div class="container">
+  <div id="statusToast" class="toast-banner"></div>
+
+  <!-- ================= TAB 1: BOOST & SYSTEM HEALTH ================= -->
+  <div id="tab-boost" class="tab-view" style="display:flex;flex-direction:column;gap:14px;">
+
+    <!-- 1-TAP INSTANT RAM & BLOAT SWEEPER -->
+    <div class="hero-card">
+      <span class="badge badge-sky">No PC Needed · Works Immediately</span>
+      <h2>⚡ 1-Tap Huawei Bloat &amp; RAM Sweep</h2>
+      <p>Instantly terminates background Huawei telemetry, HiSearch, HiBoard, and idle memory hogs eating your 4 GB RAM while keeping WhatsApp &amp; alarms untouched.</p>
+      <button class="btn btn-primary" id="btnSweep" onclick="runRamSweep()">Sweep Background Bloat &amp; Free RAM</button>
+    </div>
+
+    <!-- SPECIAL SYSTEM ACCESS SWITCHES -->
+    <div class="card">
+      <span class="badge badge-warn">Supercharge Access</span>
+      <h3 style="margin-top:6px;">Elevated Android System Permissions</h3>
+      <p style="margin-bottom:8px;">Flipping these built-in Android switches gives AnneControl deeper system power than normal apps:</p>
+
+      <div class="perm-row">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#fff;">1. Hands-Free Auto-Cleaner</div>
+          <div style="font-size:11px;color:var(--muted);">Auto-clicks Force Stop, Disable &amp; Clear Cache</div>
+        </div>
+        <button id="permAccBtn" class="btn btn-sm btn-outline" onclick="openPerm('accessibility')">Enable</button>
+      </div>
+
+      <div class="perm-row">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#fff;">2. Deep App Cache Scanner</div>
+          <div style="font-size:11px;color:var(--muted);">Reads exact hidden cache MB inside all apps</div>
+        </div>
+        <button id="permUsageBtn" class="btn btn-sm btn-outline" onclick="openPerm('usage')">Enable</button>
+      </div>
+
+      <div class="perm-row">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#fff;">3. System Settings Writer</div>
+          <div style="font-size:11px;color:var(--muted);">Applies sleek Android 10 compact UI scaling</div>
+        </div>
+        <button id="permWriteBtn" class="btn btn-sm btn-outline" onclick="openPerm('write_settings')">Enable</button>
+      </div>
+    </div>
+
+    <!-- LIVE HARDWARE METERS -->
+    <div class="grid2">
+      <div class="card">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;">4 GB LPDDR3 RAM</div>
+        <div class="stat-val" id="ramAvailTxt">-- MB</div>
+        <div class="stat-sub" id="ramSubTxt">Available Memory</div>
+        <div class="bar-bg"><div id="ramBar" class="bar-fill" style="width:60%;background:var(--sky);"></div></div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;">eMMC 5.1 STORAGE</div>
+        <div class="stat-val" id="storFreeTxt">-- GB</div>
+        <div class="stat-sub" id="storSubTxt">Free Space</div>
+        <div class="bar-bg"><div id="storBar" class="bar-fill" style="width:65%;background:var(--emerald);"></div></div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;">3000 mAh BATTERY</div>
+        <div class="stat-val" id="batLvlTxt">--%</div>
+        <div class="stat-sub" id="batSubTxt">--°C · -- mV</div>
+      </div>
+
+      <div class="card">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;">EMUI FIRMWARE</div>
+        <div class="stat-val" style="font-size:13px;margin-top:7px;word-break:break-word;" id="buildTxt">ANE-LX1</div>
+        <div class="stat-sub" id="animStateTxt">Animations: 1.0x</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TAB 2: HUAWEI BLOATWARE ================= -->
+  <div id="tab-bloat" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
+    <div class="card">
+      <h3>Huawei P20 Lite Bloatware Control</h3>
+      <p>With <strong>Auto-Cleaner</strong> enabled, tap below to automatically walk through Huawei's bloat apps and Disable or Force-Stop them hands-free — or tap any app's button to open its hidden system control screen directly!</p>
+      <div class="grid2" style="margin-top:10px;">
+        <button class="btn btn-primary" style="margin-top:0;padding:11px 10px;font-size:12px;" onclick="autoRunSafeBloat('disable')">Auto-Disable Safe Bloat</button>
+        <button class="btn btn-outline" style="margin-top:0;padding:11px 10px;font-size:12px;" onclick="autoRunSafeBloat('force_stop')">Auto Force-Stop All</button>
+      </div>
+    </div>
+
+    <div class="pill-row">
+      <button class="pill active" id="flt-safe" onclick="setBloatFilter('safe')">🟢 Safe Bloat</button>
+      <button class="pill" id="flt-optional" onclick="setBloatFilter('optional')">🟡 Optional</button>
+      <button class="pill" id="flt-protected" onclick="setBloatFilter('protected')">🔒 Protected</button>
+    </div>
+
+    <div id="bloatContainer" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </div>
+
+  <!-- ================= TAB 3: DEEP CACHE SCANNER ================= -->
+  <div id="tab-cache" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
+    <div class="hero-card">
+      <span class="badge badge-ok">100% Safe · Never Touches Chats or Photos</span>
+      <h2 id="totalCacheHeader">Deep App Cache Cleaner</h2>
+      <p>EMUI 9.1 slows down sharply when leftover app caches pile up on eMMC 5.1 storage. Scan every app's hidden cache size and auto-clean them hands-free!</p>
+      <button class="btn btn-emerald" id="btnAutoCache" onclick="autoCleanTopCaches()">Auto-Clean Top App Caches</button>
+    </div>
+
+    <div id="cacheNeedPermCard" class="card hidden">
+      <h3>Turn On Usage Access First</h3>
+      <p>Android 9 requires flipping ON <strong>Usage Access</strong> so AnneControl can read exact megabytes of hidden cache inside other apps.</p>
+      <button class="btn btn-amber" onclick="openPerm('usage')">Open Usage Access Switch →</button>
+    </div>
+
+    <div id="cacheListContainer" style="display:flex;flex-direction:column;gap:10px;"></div>
+  </div>
+
+  <!-- ================= TAB 4: EMUI 9.1 BUG FIXES ================= -->
+  <div id="tab-fixes" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
+
+    <!-- FIX 1: 0.5x GPU ANIMATIONS -->
+    <div class="card">
+      <span class="badge badge-sky">Biggest Lag Fix on Kirin 659</span>
+      <h3 style="margin-top:6px;">0.5x Snappy System Animations</h3>
+      <p id="animFixDesc">EMUI 9.1's default 1.0x window transitions overload the P20 Lite's GPU. Tap below to jump straight to Developer Options and set <strong>Window</strong>, <strong>Transition</strong>, and <strong>Animator scale</strong> to <strong>0.5x</strong>!</p>
+      <button class="btn btn-primary" onclick="openPerm('dev_options')">Jump to Animation Speed Switches →</button>
+    </div>
+
+    <!-- FIX 2: HIDDEN HUAWEI APP LAUNCH / POWERGENIE -->
+    <div class="card">
+      <span class="badge badge-warn">Fix Missed WhatsApp &amp; Push Alerts</span>
+      <h3 style="margin-top:6px;">Unlock Hidden Huawei Power &amp; Doze Menus</h3>
+      <p>EMUI 9.1 aggressively kills background chat apps. Use both direct system shortcuts below so your messages never arrive late:</p>
+      <button class="btn btn-amber" onclick="openPerm('huawei_applaunch')">1. Open Huawei App-Launch Manager</button>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="openPerm('raw_doze')">2. Open Hidden Raw Android Doze List</button>
+    </div>
+
+    <!-- FIX 3: ANDROID 10 SLEEK COMPACT UI SCALING -->
+    <div class="card">
+      <span class="badge badge-ok">Direct System Write</span>
+      <h3 style="margin-top:6px;">Modern Android 10 Compact UI Text Scale</h3>
+      <p>EMUI 9.1 makes menus look oversized and cramped. Apply a sleeker, modern Android 10 text scale directly (requires Modify System Settings):</p>
+      <div class="grid2" style="margin-top:10px;">
+        <button class="btn btn-outline" style="margin-top:0;" onclick="applyFontScale('0.88')">0.88x Sleek</button>
+        <button class="btn btn-outline" style="margin-top:0;" onclick="applyFontScale('0.94')">0.94x Crisp</button>
+      </div>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="applyFontScale('1.0')">Restore 1.0x Factory Default</button>
+    </div>
+
+  </div>
+</div>
+
+<!-- BOTTOM MOBILE NAVIGATION -->
+<div class="bottom-nav">
+  <button class="nav-item active" id="nav-boost" onclick="switchTab('boost')">
+    <span class="nav-icon">⚡</span>
+    <span>Boost</span>
+  </button>
+  <button class="nav-item" id="nav-bloat" onclick="switchTab('bloat')">
+    <span class="nav-icon">🧹</span>
+    <span>Bloatware</span>
+  </button>
+  <button class="nav-item" id="nav-cache" onclick="switchTab('cache')">
+    <span class="nav-icon">🗑️</span>
+    <span>Caches</span>
+  </button>
+  <button class="nav-item" id="nav-fixes" onclick="switchTab('fixes')">
+    <span class="nav-icon">🔧</span>
+    <span>9.1 Fixes</span>
+  </button>
+</div>
+
+<script>
+  var hasNative = typeof window.AnneNative !== "undefined";
+  var currentTab = "boost";
+  var bloatFilter = "safe";
+  var bloatItems = [];
+  var cacheItems = [];
+
+  function showBanner(msg) {
+    var el = document.getElementById("statusToast");
+    el.textContent = msg;
+    el.style.display = "block";
+    setTimeout(function() { el.style.display = "none"; }, 5500);
+  }
+
+  function switchTab(tab) {
+    currentTab = tab;
+    var tabs = ["boost", "bloat", "cache", "fixes"];
+    for (var i = 0; i < tabs.length; i++) {
+      var t = tabs[i];
+      var view = document.getElementById("tab-" + t);
+      var nav = document.getElementById("nav-" + t);
+      if (t === tab) {
+        view.classList.remove("hidden");
+        nav.classList.add("active");
+      } else {
+        view.classList.add("hidden");
+        nav.classList.remove("active");
+      }
+    }
+    if (tab === "bloat") loadBloatList();
+    if (tab === "cache") loadCacheList();
+  }
+
+  function setPermButton(id, enabled) {
+    var b = document.getElementById(id);
+    if (!b) return;
+    if (enabled) {
+      b.textContent = "✓ Active";
+      b.className = "btn btn-sm badge-ok";
+    } else {
+      b.textContent = "Enable →";
+      b.className = "btn btn-sm btn-outline";
+    }
+  }
+
+  function refreshDashboard() {
+    if (!hasNative) {
+      document.getElementById("topModelLabel").textContent = "Preview Mode (Install APK on Phone)";
+      document.getElementById("ramAvailTxt").textContent = "1,290 MB";
+      document.getElementById("ramSubTxt").textContent = "of 3,768 MB Free";
+      document.getElementById("storFreeTxt").textContent = "14.2 GB";
+      document.getElementById("storSubTxt").textContent = "73% Used (Healthy)";
+      document.getElementById("batLvlTxt").textContent = "82%";
+      document.getElementById("batSubTxt").textContent = "31.2°C · 4095 mV";
+      document.getElementById("buildTxt").textContent = "ANE-LX1 9.1.0";
+      return;
+    }
+
+    try {
+      var d = JSON.parse(window.AnneNative.getDashboardJson());
+      if (d.error) return;
+      document.getElementById("topModelLabel").textContent = d.model + " · Android " + d.androidRelease;
+      document.getElementById("ramAvailTxt").textContent = d.ram.availMb + " MB";
+      document.getElementById("ramSubTxt").textContent = "Free of " + d.ram.totalMb + " MB (zRAM: " + d.ram.swapUsedMb + " MB)";
+      var ramPct = Math.min(100, Math.round((d.ram.usedMb * 100) / d.ram.totalMb));
+      document.getElementById("ramBar").style.width = ramPct + "%";
+
+      document.getElementById("storFreeTxt").textContent = d.storage.freeGb + " GB";
+      document.getElementById("storSubTxt").textContent = d.storage.percentUsed >= 85
+        ? "⚠️ " + d.storage.percentUsed + "% Full (Clean Cache!)"
+        : d.storage.percentUsed + "% Used (Healthy)";
+      document.getElementById("storBar").style.width = d.storage.percentUsed + "%";
+      document.getElementById("storBar").style.background = d.storage.percentUsed >= 85 ? "var(--rose)" : "var(--emerald)";
+
+      document.getElementById("batLvlTxt").textContent = d.battery.level + "%";
+      document.getElementById("batSubTxt").textContent = d.battery.tempC + "°C · " + d.battery.voltageMv + " mV";
+      document.getElementById("buildTxt").textContent = d.displayBuild;
+      document.getElementById("animStateTxt").textContent = "Animations: " + d.settings.windowAnimScale + "x · Scale: " + d.settings.fontScale + "x";
+
+      setPermButton("permAccBtn", d.permissions.accessibility);
+      setPermButton("permUsageBtn", d.permissions.usageAccess);
+      setPermButton("permWriteBtn", d.permissions.writeSettings);
+    } catch (e) {}
+  }
+
+  function runRamSweep() {
+    var btn = document.getElementById("btnSweep");
+    btn.textContent = "Sweeping Huawei Bloat Processes...";
+    setTimeout(function() {
+      if (!hasNative) {
+        btn.textContent = "Sweep Background Bloat & Free RAM";
+        showBanner("✓ Swept 24 background bloat processes! Install APK on your P20 Lite to run live.");
+        return;
+      }
+      var res = JSON.parse(window.AnneNative.sweepBackgroundRamJson());
+      btn.textContent = "Sweep Background Bloat & Free RAM";
+      if (res.ok) {
+        showBanner("✓ Swept " + res.sweptCount + " background services! Freed ~" + res.freedMb + " MB (" + res.availMb + " MB RAM now available).");
+        refreshDashboard();
+      }
+    }, 120);
+  }
+
+  function openPerm(target) {
+    if (hasNative) window.AnneNative.openPermissionScreen(target);
+  }
+
+  function applyFontScale(scale) {
+    if (!hasNative) return;
+    if (window.AnneNative.setCompactFontScale(scale)) {
+      refreshDashboard();
+      showBanner("✓ Updated system text scale to " + scale + "x!");
+    }
+  }
+
+  function setBloatFilter(tier) {
+    bloatFilter = tier;
+    var tiers = ["safe", "optional", "protected"];
+    for (var i = 0; i < tiers.length; i++) {
+      var el = document.getElementById("flt-" + tiers[i]);
+      if (tiers[i] === tier) el.classList.add("active");
+      else el.classList.remove("active");
+    }
+    renderBloatList();
+  }
+
+  function loadBloatList() {
+    if (!hasNative) return;
+    try {
+      bloatItems = JSON.parse(window.AnneNative.getHuaweiBloatListJson());
+      renderBloatList();
+    } catch (e) {}
+  }
+
+  function renderBloatList() {
+    var box = document.getElementById("bloatContainer");
+    box.innerHTML = "";
+    for (var i = 0; i < bloatItems.length; i++) {
+      var item = bloatItems[i];
+      if (item.tier !== bloatFilter) continue;
+
+      var stateBadge = "";
+      if (item.state === "disabled") {
+        stateBadge = '<span class="badge badge-ok">✓ Disabled</span>';
+      } else if (item.state === "not_installed") {
+        stateBadge = '<span class="badge" style="background:#1e293b;color:#94a3b8;">Not on Phone</span>';
+      } else {
+        stateBadge = '<span class="badge badge-high">' + item.impact + ' RAM</span>';
+      }
+
+      var cacheTxt = item.cacheMb >= 0 ? " · Cache: " + item.cacheMb + " MB" : "";
+      var actionBtn = "";
+      if (item.tier !== "protected" && item.state !== "not_installed") {
+        actionBtn = '<div style="display:flex;gap:8px;margin-top:4px;">' +
+          '<button class="btn btn-sm btn-outline" onclick="openAppInfo(\'' + item.pkg + '\')">Open System Control</button>' +
+          (item.state === "active"
+            ? '<button class="btn btn-sm btn-primary" onclick="autoSingle(\'disable\',\'' + item.pkg + '\')">Auto-Disable</button>'
+            : '') +
+          '</div>';
+      }
+
+      var card = document.createElement("div");
+      card.className = "pkg-card";
+      card.innerHTML =
+        '<div class="pkg-head">' +
+          '<div><div class="pkg-name">' + item.title + '</div><div class="pkg-id">' + item.pkg + cacheTxt + '</div></div>' +
+          stateBadge +
+        '</div>' +
+        '<p>' + item.desc + '</p>' +
+        actionBtn;
+      box.appendChild(card);
+    }
+  }
+
+  function openAppInfo(pkg) {
+    if (hasNative) window.AnneNative.openAppInfo(pkg);
+  }
+
+  function autoSingle(mode, pkg) {
+    if (hasNative) window.AnneNative.startAutomation(mode, pkg);
+  }
+
+  function autoRunSafeBloat(mode) {
+    if (!hasNative) return;
+    if (!bloatItems.length) loadBloatList();
+    var pkgs = [];
+    for (var i = 0; i < bloatItems.length; i++) {
+      if (bloatItems[i].tier === "safe" && bloatItems[i].state === "active") {
+        pkgs.push(bloatItems[i].pkg);
+      }
+    }
+    if (!pkgs.length) {
+      showBanner("All safe Huawei bloat apps are already disabled or not present!");
+      return;
+    }
+    window.AnneNative.startAutomation(mode, pkgs.join(","));
+  }
+
+  function loadCacheList() {
+    if (!hasNative) return;
+    try {
+      var res = JSON.parse(window.AnneNative.getTopCacheAppsJson());
+      var permCard = document.getElementById("cacheNeedPermCard");
+      var box = document.getElementById("cacheListContainer");
+      box.innerHTML = "";
+      if (res.needsUsageAccess) {
+        permCard.classList.remove("hidden");
+        document.getElementById("totalCacheHeader").textContent = "Deep App Cache Cleaner";
+        return;
+      }
+      permCard.classList.add("hidden");
+      cacheItems = res.items || [];
+      document.getElementById("totalCacheHeader").textContent =
+        "Reclaimable Cache: " + res.totalCacheMb + " MB";
+
+      if (!cacheItems.length) {
+        box.innerHTML = '<div class="card"><p>Your app caches are already clean (under 2 MB per app)!</p></div>';
+        return;
+      }
+
+      for (var i = 0; i < cacheItems.length; i++) {
+        var ci = cacheItems[i];
+        var card = document.createElement("div");
+        card.className = "pkg-card";
+        card.innerHTML =
+          '<div class="pkg-head">' +
+            '<div><div class="pkg-name">' + ci.label + '</div><div class="pkg-id">' + ci.pkg + '</div></div>' +
+            '<span class="badge badge-warn">' + ci.cacheMb + ' MB Cache</span>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button class="btn btn-sm btn-emerald" onclick="autoSingle(\'clear_cache\',\'' + ci.pkg + '\')">Auto-Clear Cache</button>' +
+            '<button class="btn btn-sm btn-outline" onclick="openAppInfo(\'' + ci.pkg + '\')">Manual Storage</button>' +
+          '</div>';
+        box.appendChild(card);
+      }
+    } catch (e) {}
+  }
+
+  function autoCleanTopCaches() {
+    if (!hasNative) return;
+    loadCacheList();
+    if (!cacheItems.length) {
+      openPerm("usage");
+      return;
+    }
+    var pkgs = [];
+    for (var i = 0; i < Math.min(15, cacheItems.length); i++) {
+      pkgs.push(cacheItems[i].pkg);
+    }
+    window.AnneNative.startAutomation("clear_cache", pkgs.join(","));
+  }
+
+  function refreshAll() {
+    refreshDashboard();
+    if (currentTab === "bloat") loadBloatList();
+    if (currentTab === "cache") loadCacheList();
+  }
+
+  window.onAnneResume = function() {
+    refreshAll();
+    if (hasNative) {
+      try {
+        var st = JSON.parse(window.AnneNative.getAutomationStatusJson());
+        if (!st.running && st.succeededCount > 0) {
+          showBanner("✓ " + st.message);
+        }
+      } catch (e) {}
+    }
+  };
+
+  refreshAll();
+</script>
+</body>
+</html>

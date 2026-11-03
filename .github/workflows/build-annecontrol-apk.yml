@@ -1,0 +1,39 @@
+name: Build AnneControl Huawei P20 Lite APK
+
+on:
+  push:
+    branches:
+      - "arena/**"
+      - "main"
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build & Sign AnneControl APK (Android 9 / ANE-LX1)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install Android 9 (API 28) Platform SDK if needed
+        run: |
+          if [ ! -f "$ANDROID_HOME/platforms/android-28/android.jar" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-28" || true
+          fi
+
+      - name: Compile, Align & Sign AnneControl-P20Lite.apk
+        run: python3 anne-control-apk/ci_build.py
+
+      - name: Upload AnneControl APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnneControl-P20Lite-APK
+          path: dist/AnneControl-P20Lite.apk
+          if-no-files-found: error
+          retention-days: 90
