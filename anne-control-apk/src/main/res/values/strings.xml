@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AnneControl</string>
+    <string name="accessibility_service_label">AnneControl Auto-Cleaner &amp; Bloatware Helper</string>
+    <string name="accessibility_service_desc">Allows AnneControl to automatically tap Force Stop, Disable, or Clear Cache across Huawei EMUI 9.1 bloatware and cache-heavy apps so you do not have to tap through dozens of menus manually. Never touches personal data and works 100% offline.</string>
+</resources>
