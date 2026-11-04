@@ -8,60 +8,48 @@ No `INTERNET` permission — nothing leaves the device.
 
 ---
 
-## Signing key (do this once)
+## Signing
 
-Android refuses to update an installed app whose signing certificate changed. Because
-GitHub Actions runners are ephemeral, a keystore generated inside the workflow is thrown
-away after every job — so **every build would get a new key and existing installs could
-never update**. The key therefore lives in a repository secret.
+Android refuses to update an installed app whose signing certificate changed, and
+GitHub Actions runners are wiped after every job — so a key generated inside the
+workflow is thrown away, every build would get a new one, and installs could never
+update.
 
-```bash
-# 1. Create the release key ONCE, somewhere safe (it is not recoverable)
-mkdir -p keystore
-keytool -genkeypair \
-  -keystore keystore/annecontrol-release.jks \
-  -storepass '<your-store-password>' \
-  -keypass '<your-key-password>' \
-  -alias annecontrol -keyalg RSA -keysize 2048 -validity 10000 \
-  -dname "CN=AnneControl, OU=HuaweiP20Lite, O=AnneControl, C=GH"
+So the key is committed: `anne-control-apk/signing/annecontrol.keystore`
+(alias `annecontrol`, password in `ci_build.py`, valid until 2054). CI and local
+builds sign with the same certificate, so a new APK installs as an upgrade, with no
+secrets and no setup. This is the same mechanism as a committed `debug.keystore` in
+a Gradle project.
 
-# 2. Base64 it and add it to the repo's Actions secrets
-base64 -w0 keystore/annecontrol-release.jks
-```
+**The catch, recorded here so it is a decision and not an accident:** that key is
+public. Anyone who can read this repository can produce an APK your phone accepts as
+an update to AnneControl. For a sideloaded cleanup tool with no `INTERNET` permission
+that is a trade worth making, and it is why the app stays offline. Do **not** copy
+this pattern to anything that handles passwords, messages or money — a keyboard or a
+messenger is where a public key becomes a real keylogger path.
 
-Then in **Settings → Secrets and variables → Actions**, create **one** secret.
+### Using a private key instead
 
-**The quick way — one secret.** Name it `ANNE_SIGNING_KEY` and give it one line:
+Either of these overrides the committed key, in this order:
 
-    <base64 of the .jks>|<store password>|<key password>
+1. **Repository secret** `ANNE_SIGNING_KEY`, one line: `<base64 keystore>|<password>`
+   (or `<base64>|<storepass>|<keypass>`). The older three-secret form
+   `RELEASE_KEYSTORE_B64` + `RELEASE_STORE_PASSWORD` + `RELEASE_KEY_PASSWORD` still
+   works and takes the same precedence. Passwords reach `apksigner` through `env:`,
+   so they never appear in the log.
+2. **A private keystore on the build machine**, `keystore/annecontrol-release.jks`,
+   used only when `RELEASE_STORE_PASSWORD` is set. `keystore/`, `*.jks` and `*.b64`
+   stay git-ignored.
 
-If the keystore was created with the same store and key password (as in step 1), the
-shorter `<base64>|<password>` form is fine too. `ci_build.py` splits it, writes the
-keystore with mode 600, and passes the passwords to `apksigner` through `env:`, so
-they never reach the log.
+Changing keys changes the signature: the first APK signed by a new key has to be
+installed after an uninstall. Decide once, before the first install.
 
-The older three-secret form still works and wins if present:
+> GitHub will not let a workflow upload a secret on its own — a job declaring
+> `permissions: write-all` still gets `403 Resource not accessible by integration`
+> from the secrets API (verified on this repository). That is deliberate: otherwise
+> any workflow, or any action it calls, could swap the signing identity. Which is
+> the other reason the committed key exists — it needs nobody's involvement.
 
-| Secret | Value |
-|---|---|
-| `RELEASE_KEYSTORE_B64` | output of the `base64 -w0` command above |
-| `RELEASE_STORE_PASSWORD` | the `-storepass` you chose |
-| `RELEASE_KEY_PASSWORD` | the `-keypass` you chose |
-
-`keystore/`, `*.jks` and `*.b64` are git-ignored — never commit the key.
-
-> **Why can't the build just create the secret itself?** GitHub does not grant the
-> `secrets` permission to a workflow's `GITHUB_TOKEN`, not even with
-> `permissions: write-all` (verified on this repo: `HTTP 403 Resource not accessible
-> by integration`). That is deliberate — otherwise any workflow, or any action it
-> calls, could overwrite the signing key and ship an update the phone would accept.
-> So this one secret has to be entered by a human, once.
-
-If the secret is missing, `ci_build.py` still produces a working APK, but it prints a
-GitHub Actions warning: that build is signed with a **throwaway** key and will not install
-over a previously released one.
-
----
 
 ## Building
 

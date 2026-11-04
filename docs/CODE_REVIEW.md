@@ -532,3 +532,35 @@ key instead of a secret (artifact, cache, package, commit) is either readable by
 authenticated GitHub user on a public repository or expires; both are worse than one
 manual paste. `ci_build.py` therefore accepts a single `ANNE_SIGNING_KEY` secret
 (`<base64>|<password>`) to keep that paste to one field.
+
+### Signing: decision record
+
+Three ways to give every build the same certificate, and the choice is the owner's:
+
+| Approach | Setup | Signature stable | Key secret |
+|---|---|---|---|
+| Repository secret (`ANNE_SIGNING_KEY`) | one paste | yes | **yes** |
+| **Committed keystore (chosen)** | none | yes | no — public by construction |
+| Build locally | JDK + SDK | yes | yes |
+
+The repository now commits `anne-control-apk/signing/annecontrol.keystore` and lets
+`ci_build.py` use it when no secret or private local key is present. That is the
+pattern already used by the owner's keyboard project (a committed `debug.keystore`
+with its password in `build.gradle`), so it needed no new habit: updates install as
+upgrades, no secrets, no per-build setup. The cost is explicit — anyone who can read
+this public repository can sign an APK the phone will accept as an update. Accepted
+for this app because it is sideloaded, has no `INTERNET` permission, and stores
+nothing sensitive; it is explicitly *not* a pattern to copy into an app that handles
+input or messages.
+
+The secret path remains implemented and takes precedence, so switching later is a
+configuration change rather than a code change — but it changes the certificate, so
+it costs one uninstall whenever it happens. Hence: decide once, before the first
+install.
+
+Incidental fix found while wiring this up: the private-local-key branch used to
+return the keystore without ensuring a password was available, which surfaced later
+as apksigner's "keystore password was incorrect". It is now skipped with a warning
+unless `RELEASE_STORE_PASSWORD` is set, and `resolve_keystore()` returns passwords
+explicitly instead of mutating the process environment (which made a second call
+behave differently from the first).

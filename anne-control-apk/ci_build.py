@@ -8,9 +8,11 @@ Signing
 Android refuses to update an installed app whose signing certificate changed, so
 the release key must survive between builds. This script therefore:
 
-  1. restores the keystore from RELEASE_KEYSTORE_B64 (a repo secret, base64) if set;
-  2. otherwise reuses ./keystore/annecontrol-release.jks if it already exists;
-  3. only then falls back to generating a throwaway key, and says so loudly.
+  1. restores the keystore from ANNE_SIGNING_KEY / RELEASE_KEYSTORE_B64 if set;
+  2. otherwise reuses a private ./keystore/annecontrol-release.jks if it exists;
+  3. otherwise uses the committed signing/annecontrol.keystore (the default here,
+     so that CI and local builds share one signature);
+  4. only then falls back to generating a throwaway key, and says so loudly.
 
 Passwords come from RELEASE_STORE_PASSWORD / RELEASE_KEY_PASSWORD and are handed to
 apksigner via `env:` so they never appear on the command line or in logs.
@@ -34,6 +36,15 @@ TEST_SRC = PROJECT_DIR / "test" / "java"
 # Classes with no Android imports, so they can be compiled and run on a plain JVM.
 PURE_JAVA = ("HuaweiCatalog.java", "QueuePlanner.java")
 KEYSTORE_DIR = REPO_ROOT / "keystore"
+# Signing identity shared through the repository, the same way a committed
+# debug.keystore works in a Gradle project: every build (CI included) signs with
+# this one key, so APKs install as upgrades. Its password is public too - that is
+# what "committed key" means. See README "Signing" for the trade-off and for the
+# private-key alternative (ANNE_SIGNING_KEY), which takes precedence when set.
+SIGNING_DIR = PROJECT_DIR / "signing"
+COMMITTED_KEYSTORE = SIGNING_DIR / "annecontrol.keystore"
+COMMITTED_STORE_PASSWORD = "23Spq3Q8UDnLcoXUpRG5m3GA"
+COMMITTED_KEY_PASSWORD = "23Spq3Q8UDnLcoXUpRG5m3GA"
 KEYSTORE_FILE = KEYSTORE_DIR / "annecontrol-release.jks"
 
 KEY_ALIAS = "annecontrol"
@@ -122,7 +133,13 @@ def run_unit_tests():
 
 
 def resolve_keystore():
-    """Returns (path, is_persistent). See the module docstring."""
+    """
+    Returns (path, is_persistent, passwords).
+
+    `passwords` is None when apksigner should take them from the environment
+    (secret/local-key cases) or use the throwaway default, and a (store, key)
+    tuple for the committed key, whose password is public anyway.
+    """
     KEYSTORE_DIR.mkdir(parents=True, exist_ok=True)
 
     # Single-secret form, for people who would rather paste once than three times:
@@ -134,30 +151,47 @@ def resolve_keystore():
             sys.exit("ERROR: ANNE_SIGNING_KEY must be '<base64 keystore>|<password>' "
                      "or '<base64 keystore>|<storepass>|<keypass>'")
         try:
-            KEYSTORE_FILE.write_bytes(base64.b64decode(parts[0], validate=True))
+            blob = base64.b64decode(parts[0], validate=True)
         except Exception as exc:
             sys.exit(f"ERROR: ANNE_SIGNING_KEY does not start with valid base64: {exc}")
+        # A truncated or re-encoded paste otherwise fails much later with a
+        # confusing "keystore password was incorrect" from apksigner.
+        if len(blob) < 512 or not (blob[:2] == b"\x30\x82" or blob[:4] == b"\xfe\xed\xfe\xed"):
+            sys.exit("ERROR: ANNE_SIGNING_KEY does not look like a JKS/PKCS12 keystore "
+                     f"({len(blob)} bytes decoded). Re-copy the whole line.")
+        KEYSTORE_FILE.write_bytes(blob)
         os.chmod(KEYSTORE_FILE, 0o600)
         if not os.environ.get("RELEASE_STORE_PASSWORD"):
             os.environ["RELEASE_STORE_PASSWORD"] = parts[1]
         if not os.environ.get("RELEASE_KEY_PASSWORD"):
             os.environ["RELEASE_KEY_PASSWORD"] = parts[-1]
+        # (env vars only: apksigner is invoked with env: references, never literals)
         print(f"Restored release keystore from ANNE_SIGNING_KEY -> {KEYSTORE_FILE}")
-        return KEYSTORE_FILE, True
+        return KEYSTORE_FILE, True, None
 
     encoded = os.environ.get("RELEASE_KEYSTORE_B64", "").strip()
     if encoded:
         KEYSTORE_FILE.write_bytes(base64.b64decode(encoded))
         print(f"Restored release keystore from RELEASE_KEYSTORE_B64 -> {KEYSTORE_FILE}")
-        return KEYSTORE_FILE, True
+        return KEYSTORE_FILE, True, None
 
     if KEYSTORE_FILE.exists():
-        print(f"Reusing existing release keystore at {KEYSTORE_FILE}")
-        return KEYSTORE_FILE, True
+        # Only honour a private local key when we also know its password; otherwise
+        # signing would fail later with a confusing "password was incorrect".
+        if os.environ.get("RELEASE_STORE_PASSWORD"):
+            print(f"Reusing existing release keystore at {KEYSTORE_FILE}")
+            return KEYSTORE_FILE, True, None
+        print(f"::warning::Ignoring {KEYSTORE_FILE}: RELEASE_STORE_PASSWORD is not set. "
+              "Falling back to the committed signing key.")
+
+    if COMMITTED_KEYSTORE.exists():
+        print(f"Using the committed signing key at {COMMITTED_KEYSTORE}")
+        return COMMITTED_KEYSTORE, True, (COMMITTED_STORE_PASSWORD, COMMITTED_KEY_PASSWORD)
 
     print("::warning::No release keystore provided - generating a THROWAWAY key. "
           "APKs built with it cannot be installed over ones signed with a different key. "
-          "Add the ANNE_SIGNING_KEY repository secret to fix this (see README.md).")
+          "Commit a signing key at anne-control-apk/signing/annecontrol.keystore "
+          "or add the ANNE_SIGNING_KEY repository secret (see README.md).")
     run([
         "keytool", "-genkeypair",
         "-keystore", KEYSTORE_FILE,
@@ -169,11 +203,16 @@ def resolve_keystore():
         "-validity", "10000",
         "-dname", "CN=AnneControl, OU=HuaweiP20Lite, O=AnneControl, C=GH",
     ])
-    return KEYSTORE_FILE, False
+    return KEYSTORE_FILE, False, None
 
 
-def signing_password_args():
-    """apksigner password flags, passed via env so they stay out of logs."""
+def signing_password_args(passwords=None):
+    """apksigner password flags; secrets go via env: so they stay out of logs."""
+    if passwords is not None:
+        store, key = passwords
+        # The committed key's password is published in this file, so passing it on
+        # the command line exposes nothing that is not already public.
+        return ["--ks-pass", f"pass:{store}", "--key-pass", f"pass:{key}"]
     if os.environ.get("RELEASE_STORE_PASSWORD"):
         store = ["--ks-pass", "env:RELEASE_STORE_PASSWORD"]
     else:
@@ -260,12 +299,12 @@ def main():
     run([zipalign, "-f", "-p", "4", unaligned_apk, aligned_apk])
 
     # 7. Sign (v1 + v2 + v3 for Huawei Android 9 compatibility)
-    keystore, persistent = resolve_keystore()
+    keystore, persistent, passwords = resolve_keystore()
     run([
         apksigner, "sign",
         "--ks", keystore,
         "--ks-key-alias", KEY_ALIAS,
-        *signing_password_args(),
+        *signing_password_args(passwords),
         "--v1-signing-enabled", "true",
         "--v2-signing-enabled", "true",
         "--v3-signing-enabled", "true",
