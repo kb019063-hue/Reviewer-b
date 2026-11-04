@@ -232,7 +232,8 @@ def assert_signer(verify_output, expected_hex):
     """The APK must carry the committed certificate, or upgrades break silently."""
     match = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)", verify_output)
     if not match:
-        sys.exit("ERROR: could not read the signer certificate from apksigner output")
+        tail = " | ".join(verify_output.strip().splitlines()[-5:])
+        sys.exit("ERROR: could not read the signer certificate from apksigner output: " + tail)
     actual = match.group(1).lower()
     if actual != expected_hex:
         sys.exit(
@@ -351,5 +352,16 @@ def main():
               "will refuse to update to it.")
 
 
+def _report_failure(code):
+    """Turn a SystemExit string into a ::error:: annotation so CI failures explain themselves."""
+    if isinstance(code, str) and code.strip():
+        message = " ".join(str(code).split())
+        print(f"::error::{message[:900]}", file=sys.stderr)
+
+
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit as exc:
+        _report_failure(exc.code)
+        raise
