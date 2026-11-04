@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>AnneControl</title>
 <style>
   :root {
@@ -36,7 +36,6 @@
     top: 0;
     z-index: 20;
     background: rgba(2, 6, 23, 0.94);
-    backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
     padding: 13px 16px;
     display: flex;
@@ -237,7 +236,6 @@
     right: 0;
     height: 66px;
     background: rgba(9, 14, 28, 0.96);
-    backdrop-filter: blur(12px);
     border-top: 1px solid var(--border);
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -317,8 +315,28 @@
     <div class="hero-card">
       <span class="badge badge-sky">No PC Needed · Elevated System Access</span>
       <h2>⚡ 1-Tap Huawei Bloat &amp; RAM Sweep</h2>
-      <p>Instantly terminates background Huawei telemetry, HiSearch, HiBoard, and idle memory hogs eating your 4 GB RAM while keeping WhatsApp &amp; alarms untouched.</p>
+      <p>Stops Huawei telemetry, HiSearch, HiBoard and other background hogs eating your 4 GB RAM.
+      <strong>Nothing is exempt by default</strong> — chat apps like WhatsApp keep a connection alive
+      after you close them, so they get stopped too. Put anything you need running on the
+      Keep&nbsp;Alive list below.</p>
       <button class="btn btn-primary" id="btnSweep" onclick="runRamSweep()">Sweep Background Bloat &amp; Free RAM</button>
+    </div>
+
+    <!-- KILL POLICY / KEEP ALIVE -->
+    <div class="card">
+      <span class="badge badge-warn">Kill Policy</span>
+      <h3 style="margin-top:6px;">What the sweep is allowed to stop</h3>
+      <p style="margin-bottom:8px;">This is your decision, not a hard-coded one. Anything on the Keep Alive
+      list is never touched.</p>
+
+      <div class="pill-row">
+        <button class="pill active" id="scope-all" onclick="setSweepScope(true)">Bloat + all apps</button>
+        <button class="pill" id="scope-bloat" onclick="setSweepScope(false)">Curated bloat only</button>
+      </div>
+
+      <input type="text" id="keepSearchInput" class="search-box"
+             placeholder="🔍 Find an app to keep alive (e.g. whatsapp)…" oninput="filterKeepList()" />
+      <div id="keepListContainer" style="display:flex;flex-direction:column;gap:0;margin-top:6px;"></div>
     </div>
 
     <!-- SPECIAL SYSTEM ACCESS SWITCHES -->
@@ -435,7 +453,7 @@
   <div id="tab-fixes" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
 
     <!-- FIX 0: STOP APPS RELOADING / RESTARTING IN RECENTS -->
-    <div class=card style="border: 1px solid rgba(56, 189, 248, 0.4); background: linear-gradient(145deg, rgba(14, 165, 233, 0.12), #0f172a);">
+    <div class="card" style="border: 1px solid rgba(56, 189, 248, 0.4); background: linear-gradient(145deg, rgba(14, 165, 233, 0.12), #0f172a);">
       <span class="badge badge-sky">Fix Apps Reloading In Recents</span>
       <h3 style="margin-top:6px;">🛑 Stop EMUI 9.1 From Killing Recent Apps</h3>
       <p>EMUI 9.1 introduced an ultra-aggressive internal daemon (<strong>PowerGenie</strong>) that forcibly kills apps in the background within 60 seconds even when you have 2–3 GB free RAM. Follow these 3 direct phone steps:</p>
@@ -512,18 +530,21 @@
       <h3 style="margin-top:6px;">Permanent Bloat Stripper Script</h3>
       <p style="margin-bottom:8px;">Uninstall HiSearch, HiView, and telemetry completely without rooting. Paste this into your terminal or ADB Shell:</p>
       <div class="adb-code-block" id="adbScriptCode">pm uninstall -k --user 0 com.huawei.search &amp;&amp; pm uninstall -k --user 0 com.huawei.intelligent &amp;&amp; pm uninstall -k --user 0 com.huawei.hiview &amp;&amp; pm uninstall -k --user 0 com.huawei.bd &amp;&amp; pm uninstall -k --user 0 com.huawei.vassistant &amp;&amp; pm uninstall -k --user 0 com.facebook.appmanager</div>
+      <p style="margin-top:8px;">Undo any of it with <code>pm install-existing &lt;package&gt;</code> — this
+      removes the app for the current user only, the factory copy stays on the system partition.</p>
       <div class="grid2" style="margin-top:10px;">
         <button class="btn btn-outline" style="margin-top:0;font-size:12px;" onclick="copyAdbScript()">📋 Copy Script</button>
         <button class="btn btn-outline" style="margin-top:0;font-size:12px;" onclick="shareAdbScript()">📤 Share / Save</button>
       </div>
     </div>
 
-    <!-- COMMAND 2: SYSTEM WRITE PERMISSION VIA ADB -->
+    <!-- COMMAND 2: USAGE ACCESS VIA ADB -->
     <div class="card">
       <span class="badge badge-warn">Developer Permission Grant</span>
-      <h3 style="margin-top:6px;">Grant System Permissions via ADB</h3>
-      <p style="margin-bottom:8px;">Grant AnneControl direct secure settings and package usage permissions from your computer with one command:</p>
-      <div class="adb-code-block" id="adbPermCode">adb shell pm grant com.annecontrol.p20lite android.permission.WRITE_SECURE_SETTINGS &amp;&amp; adb shell appops set com.annecontrol.p20lite GET_USAGE_STATS allow</div>
+      <h3 style="margin-top:6px;">Grant Usage Access via ADB</h3>
+      <p style="margin-bottom:8px;">Skips the Settings screens and grants the cache scanner its usage-access
+      app-op directly (needs a one-time USB debugging connection):</p>
+      <div class="adb-code-block" id="adbPermCode">adb shell appops set com.annecontrol.p20lite GET_USAGE_STATS allow</div>
       <button class="btn btn-outline" style="margin-top:10px;font-size:12px;" onclick="copyAdbPerm()">📋 Copy ADB Grant Command</button>
     </div>
 
@@ -572,12 +593,59 @@
   var bloatItems = [];
   var cacheItems = [];
   var bloatSearchTerm = "";
+  var keepSearchTerm = "";
+  var keepLoaded = false;
+  var keepModel = { sweepAllApps: true, entries: [] };
+  var bannerTimer = null;
 
-  function showBanner(msg) {
+  /* ------------------------------------------------------------------ helpers */
+  /* App labels come from PackageManager, i.e. from any app the user installed.
+     They are untrusted text, so every string goes in via textContent and every
+     handler is attached with addEventListener - never string-concatenated HTML. */
+  function make(tag, cls, text, style) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    if (style) n.style.cssText = style;
+    return n;
+  }
+
+  function makeBadge(text, cls, style) {
+    var b = make("span", cls || "badge", text);
+    if (style) b.style.cssText = style;
+    return b;
+  }
+
+  function setText(id, text) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = text;
+  }
+
+  function onTap(node, fn) {
+    node.addEventListener("click", fn);
+    return node;
+  }
+
+  function cardWithText(text) {
+    var c = make("div", "card");
+    c.appendChild(make("p", null, text));
+    return c;
+  }
+
+  function showBanner(msg, onTapHandler) {
     var el = document.getElementById("statusToast");
+    if (!el) return;
     el.textContent = msg;
     el.style.display = "block";
-    setTimeout(function() { el.style.display = "none"; }, 5500);
+    el.style.cursor = onTapHandler ? "pointer" : "default";
+    el.onclick = onTapHandler || null;   /* never built from data */
+    if (bannerTimer) clearTimeout(bannerTimer);
+    bannerTimer = setTimeout(function() {
+      el.style.display = "none";
+      el.style.cursor = "default";
+      el.onclick = null;
+      bannerTimer = null;
+    }, 6500);
   }
 
   function switchTab(tab) {
@@ -595,10 +663,12 @@
         nav.classList.remove("active");
       }
     }
-    if (tab === "bloat") loadBloatList();
+    if (tab === "bloat") loadBloatList(false);
     if (tab === "cache") loadCacheList();
+    window.scrollTo(0, 0);
   }
 
+  /* --------------------------------------------------------------- dashboard */
   function setPermButton(id, enabled) {
     var b = document.getElementById(id);
     if (!b) return;
@@ -613,72 +683,200 @@
 
   function refreshDashboard() {
     if (!hasNative) {
-      document.getElementById("topModelLabel").textContent = "Preview Mode (Install APK on Phone)";
-      document.getElementById("ramAvailTxt").textContent = "1,290 MB";
-      document.getElementById("ramSubTxt").textContent = "of 3,768 MB Free";
-      document.getElementById("storFreeTxt").textContent = "14.2 GB";
-      document.getElementById("storSubTxt").textContent = "73% Used (Healthy)";
-      document.getElementById("batLvlTxt").textContent = "82%";
-      document.getElementById("batSubTxt").textContent = "31.2°C · 4095 mV";
-      document.getElementById("buildTxt").textContent = "ANE-LX1 9.1.0";
+      setText("topModelLabel", "Preview Mode (Install APK on Phone)");
+      setText("ramAvailTxt", "1,290 MB");
+      setText("ramSubTxt", "of 3,768 MB Free");
+      setText("storFreeTxt", "14.2 GB");
+      setText("storSubTxt", "73% Used (Healthy)");
+      setText("batLvlTxt", "82%");
+      setText("batSubTxt", "31.2°C · 4095 mV");
+      setText("buildTxt", "ANE-LX1 9.1.0");
       return;
     }
 
     try {
       var d = JSON.parse(window.AnneNative.getDashboardJson());
       if (d.error) return;
-      document.getElementById("topModelLabel").textContent = d.model + " · Android " + d.androidRelease;
-      document.getElementById("ramAvailTxt").textContent = d.ram.availMb + " MB";
-      document.getElementById("ramSubTxt").textContent = "Free of " + d.ram.totalMb + " MB (zRAM: " + d.ram.swapUsedMb + " MB)";
+      setText("topModelLabel", d.model + " · Android " + d.androidRelease);
+      setText("ramAvailTxt", d.ram.availMb + " MB");
+      setText("ramSubTxt", "Free of " + d.ram.totalMb + " MB (zRAM: " + d.ram.swapUsedMb + " MB)");
       var ramPct = Math.min(100, Math.round((d.ram.usedMb * 100) / d.ram.totalMb));
       document.getElementById("ramBar").style.width = ramPct + "%";
 
-      document.getElementById("storFreeTxt").textContent = d.storage.freeGb + " GB";
-      document.getElementById("storSubTxt").textContent = d.storage.percentUsed >= 85
+      setText("storFreeTxt", d.storage.freeGb + " GB");
+      setText("storSubTxt", d.storage.percentUsed >= 85
         ? "⚠️ " + d.storage.percentUsed + "% Full (Clean Cache!)"
-        : d.storage.percentUsed + "% Used (Healthy)";
+        : d.storage.percentUsed + "% Used (Healthy)");
       document.getElementById("storBar").style.width = d.storage.percentUsed + "%";
-      document.getElementById("storBar").style.background = d.storage.percentUsed >= 85 ? "var(--rose)" : "var(--emerald)";
+      document.getElementById("storBar").style.background =
+        d.storage.percentUsed >= 85 ? "var(--rose)" : "var(--emerald)";
 
-      document.getElementById("batLvlTxt").textContent = d.battery.level + "%";
-      document.getElementById("batSubTxt").textContent = d.battery.tempC + "°C · " + d.battery.voltageMv + " mV";
-      document.getElementById("buildTxt").textContent = d.displayBuild;
-      document.getElementById("animStateTxt").textContent = "Animations: " + d.settings.windowAnimScale + "x · Scale: " + d.settings.fontScale + "x";
+      setText("batLvlTxt", d.battery.level + "%");
+      setText("batSubTxt", d.battery.tempC + "°C · " + d.battery.voltageMv + " mV");
+      setText("buildTxt", d.displayBuild);
+      setText("animStateTxt", "Animations: " + d.settings.windowAnimScale + "x · Scale: " + d.settings.fontScale + "x");
 
       setPermButton("permAccBtn", d.permissions.accessibility);
+      if (!d.permissions.accessibility && d.permissions.accessibilityStale) {
+        // Switched on in Settings but not bound: EMUI stopped the service.
+        var b = document.getElementById("permAccBtn");
+        if (b) {
+          b.textContent = "Restart service";
+          b.className = "btn btn-sm badge-warn";
+        }
+      }
       setPermButton("permUsageBtn", d.permissions.usageAccess);
       setPermButton("permWriteBtn", d.permissions.writeSettings);
       setPermButton("permBatBtn", d.permissions.batteryExemption);
     } catch (e) {}
   }
 
+  /* ------------------------------------------------------------------- sweep */
   function runRamSweep() {
     var btn = document.getElementById("btnSweep");
-    btn.textContent = "Sweeping Huawei Bloat Processes...";
+    if (!btn || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "Stopping background processes…";
     setTimeout(function() {
-      if (!hasNative) {
+      try {
+        if (!hasNative) {
+          showBanner("Preview mode — install the APK on your P20 Lite to sweep for real.");
+          return;
+        }
+        window.AnneNative.invalidateScanCaches();
+        var res = JSON.parse(window.AnneNative.sweepBackgroundRamJson());
+        if (res.ok) {
+          var scopeTxt = res.scope === "bloat" ? "curated bloat" : "curated bloat + third-party apps";
+          var delta = (res.freedMb > 0 ? "+" : "") + res.freedMb + " MB";
+          showBanner("✓ Sent stop requests to " + res.requestedCount + " apps (" + scopeTxt + ") · " +
+                     res.availMb + " MB RAM free now, measured delta " + delta + ".");
+          refreshDashboard();
+        } else {
+          showBanner("Sweep failed: " + (res.message || "unknown error"));
+        }
+      } catch (e) {
+        showBanner("Sweep failed: " + e);
+      } finally {
+        btn.disabled = false;
         btn.textContent = "Sweep Background Bloat & Free RAM";
-        showBanner("✓ Swept 24 background bloat processes! Install APK on your P20 Lite to run live.");
-        return;
       }
-      var res = JSON.parse(window.AnneNative.sweepBackgroundRamJson());
-      btn.textContent = "Sweep Background Bloat & Free RAM";
-      if (res.ok) {
-        showBanner("✓ Swept " + res.sweptCount + " background services! Freed ~" + res.freedMb + " MB (" + res.availMb + " MB RAM now available).");
-        refreshDashboard();
-      }
-    }, 120);
+    }, 40);
   }
 
-  function openPerm(target) {
-    if (hasNative) window.AnneNative.openPermissionScreen(target);
-  }
-
-  function applyFontScale(scale) {
+  /* -------------------------------------------------------------- keep alive */
+  function loadKeepList(force) {
     if (!hasNative) return;
-    if (window.AnneNative.setCompactFontScale(scale)) {
-      refreshDashboard();
-      showBanner("✓ Updated system text scale to " + scale + "x!");
+    if (keepLoaded && !force) return;
+    try {
+      var res = JSON.parse(window.AnneNative.getKeepAliveJson());
+      keepModel.sweepAllApps = !!res.sweepAllApps;
+      keepModel.entries = (res.curated || []).concat(res.others || []);
+      keepLoaded = true;
+      applyScopePills();
+      renderKeepList();
+    } catch (e) {
+      showBanner("Could not read the app list: " + e);
+    }
+  }
+
+  function applyScopePills() {
+    var all = document.getElementById("scope-all");
+    var bloat = document.getElementById("scope-bloat");
+    if (!all || !bloat) return;
+    if (keepModel.sweepAllApps) {
+      all.classList.add("active");
+      bloat.classList.remove("active");
+    } else {
+      bloat.classList.add("active");
+      all.classList.remove("active");
+    }
+  }
+
+  function setSweepScope(all) {
+    keepModel.sweepAllApps = all;
+    applyScopePills();
+    if (hasNative) window.AnneNative.setSweepAllApps(all);
+    showBanner(all
+      ? "Sweep will stop curated bloat plus every third-party app that is not on the Keep Alive list."
+      : "Sweep will only stop the curated Huawei/Meta bloat list.");
+  }
+
+  function toggleKeep(pkg, keep) {
+    if (!hasNative) return;
+    window.AnneNative.setKeepAlive(pkg, keep);
+    for (var i = 0; i < keepModel.entries.length; i++) {
+      if (keepModel.entries[i].pkg === pkg) keepModel.entries[i].kept = keep;
+    }
+    renderKeepList();
+  }
+
+  function filterKeepList() {
+    var input = document.getElementById("keepSearchInput");
+    keepSearchTerm = (input ? input.value : "").trim().toLowerCase();
+    renderKeepList();
+  }
+
+  function renderKeepList() {
+    var box = document.getElementById("keepListContainer");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!hasNative) {
+      box.appendChild(make("p", null, "Install the APK on your phone to manage this list."));
+      return;
+    }
+    if (!keepLoaded) {
+      box.appendChild(onTap(make("button", "btn btn-sm btn-outline", "Load app list"),
+        function() { loadKeepList(true); }));
+      return;
+    }
+
+    var frag = document.createDocumentFragment();
+    var shown = 0;
+    for (var i = 0; i < keepModel.entries.length; i++) {
+      var it = keepModel.entries[i];
+      if (keepSearchTerm) {
+        var hay = (it.label + " " + it.pkg).toLowerCase();
+        if (hay.indexOf(keepSearchTerm) === -1) continue;
+      }
+      if (shown >= 60) break;
+      shown++;
+      frag.appendChild(keepRow(it));
+    }
+    if (!shown) {
+      box.appendChild(make("p", null, keepSearchTerm
+        ? "No app matches \u201c" + keepSearchTerm + "\u201d."
+        : "No apps found."));
+      return;
+    }
+    if (shown >= 60) {
+      frag.appendChild(make("p", "stat-sub", "Showing first 60 — refine the search to see more."));
+    }
+    box.appendChild(frag);
+  }
+
+  function keepRow(it) {
+    var row = make("div", null, null,
+      "display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);");
+    var left = make("div");
+    left.appendChild(make("div", "pkg-name", it.label));
+    left.appendChild(make("div", "pkg-id", it.pkg + (it.curated ? " · bloat catalog" : "")));
+    var btn = make("button", "btn btn-sm " + (it.kept ? "btn-emerald" : "btn-outline"),
+      it.kept ? "Kept alive" : "Keep alive");
+    onTap(btn, function() { toggleKeep(it.pkg, !it.kept); });
+    row.appendChild(left);
+    row.appendChild(btn);
+    return row;
+  }
+
+  /* ---------------------------------------------------------------- bloatware */
+  function loadBloatList(force) {
+    if (!hasNative) return;
+    try {
+      if (force) window.AnneNative.invalidateScanCaches();
+      bloatItems = JSON.parse(window.AnneNative.getHuaweiBloatListJson());
+      renderBloatList();
+    } catch (e) {
+      showBanner("Could not read the bloat list: " + e);
     }
   }
 
@@ -687,6 +885,7 @@
     var tiers = ["safe", "optional", "protected"];
     for (var i = 0; i < tiers.length; i++) {
       var el = document.getElementById("flt-" + tiers[i]);
+      if (!el) continue;
       if (tiers[i] === tier) el.classList.add("active");
       else el.classList.remove("active");
     }
@@ -699,72 +898,211 @@
     renderBloatList();
   }
 
-  function loadBloatList() {
-    if (!hasNative) return;
-    try {
-      bloatItems = JSON.parse(window.AnneNative.getHuaweiBloatListJson());
-      renderBloatList();
-    } catch (e) {}
-  }
-
   function renderBloatList() {
     var box = document.getElementById("bloatContainer");
+    if (!box) return;
     box.innerHTML = "";
+
+    var frag = document.createDocumentFragment();
+    var shown = 0;
     for (var i = 0; i < bloatItems.length; i++) {
       var item = bloatItems[i];
       if (bloatSearchTerm) {
-        var matchTitle = item.title.toLowerCase().indexOf(bloatSearchTerm) !== -1;
-        var matchPkg = item.pkg.toLowerCase().indexOf(bloatSearchTerm) !== -1;
-        var matchDesc = item.desc.toLowerCase().indexOf(bloatSearchTerm) !== -1;
-        if (!matchTitle && !matchPkg && !matchDesc) continue;
-      } else {
-        if (item.tier !== bloatFilter) continue;
+        var hay = (item.title + " " + item.pkg + " " + item.desc).toLowerCase();
+        if (hay.indexOf(bloatSearchTerm) === -1) continue;
+      } else if (item.tier !== bloatFilter) {
+        continue;
       }
+      shown++;
+      frag.appendChild(bloatCard(item));
+    }
 
-      var stateBadge = "";
-      if (item.state === "disabled") {
-        stateBadge = '<span class="badge badge-ok">✓ Disabled</span>';
-      } else if (item.state === "not_installed") {
-        stateBadge = '<span class="badge" style="background:#1e293b;color:#94a3b8;">Not on Phone</span>';
-      } else {
-        stateBadge = '<span class="badge badge-high">' + item.impact + ' RAM</span>';
-      }
+    if (!shown) {
+      box.appendChild(cardWithText(bloatSearchTerm
+        ? "No app matches \u201c" + bloatSearchTerm + "\u201d."
+        : "Nothing in this tier on this firmware."));
+      return;
+    }
+    box.appendChild(frag);
+  }
 
-      var cacheTxt = item.cacheMb >= 0 ? " · Cache: " + item.cacheMb + " MB" : "";
-      var actionBtn = "";
-      if (item.tier !== "protected" && item.state !== "not_installed") {
-        actionBtn = '<div style="display:flex;gap:8px;margin-top:4px;">' +
-          '<button class="btn btn-sm btn-outline" onclick="openAppInfo(\'' + item.pkg + '\')">Open System Control</button>' +
-          (item.state === "active"
-            ? '<button class="btn btn-sm btn-primary" onclick="autoSingle(\'disable\',\'' + item.pkg + '\')">Auto-Disable</button>'
-            : '') +
-          '</div>';
-      }
+  function bloatCard(item) {
+    var card = make("div", "pkg-card");
+    var head = make("div", "pkg-head");
+    var info = make("div");
+    info.appendChild(make("div", "pkg-name", item.title));
+    var cacheTxt = item.cacheMb >= 0 ? " · Cache: " + item.cacheMb + " MB" : "";
+    info.appendChild(make("div", "pkg-id", item.pkg + cacheTxt));
+    head.appendChild(info);
 
-      var card = document.createElement("div");
-      card.className = "pkg-card";
-      card.innerHTML =
-        '<div class="pkg-head">' +
-          '<div><div class="pkg-name">' + item.title + '</div><div class="pkg-id">' + item.pkg + cacheTxt + '</div></div>' +
-          stateBadge +
-        '</div>' +
-        '<p>' + item.desc + '</p>' +
-        actionBtn;
-      box.appendChild(card);
+    if (item.state === "disabled") {
+      head.appendChild(makeBadge("✓ Disabled", "badge badge-ok"));
+    } else if (item.state === "not_installed") {
+      head.appendChild(makeBadge("Not on Phone", "badge", "background:#1e293b;color:#94a3b8;"));
+    } else {
+      head.appendChild(makeBadge(item.impact + " RAM", item.impact === "High" ? "badge badge-high" : "badge badge-warn"));
+    }
+    card.appendChild(head);
+
+    var p = make("p", null, item.desc);
+    card.appendChild(p);
+
+    if (item.tier !== "protected" && item.state !== "not_installed") {
+      var actions = make("div", null, null, "display:flex;gap:8px;margin-top:4px;");
+      (function(pkg, state) {
+        actions.appendChild(onTap(make("button", "btn btn-sm btn-outline", "Open System Control"),
+          function() { openAppInfo(pkg); }));
+        if (state === "active") {
+          actions.appendChild(onTap(make("button", "btn btn-sm btn-primary", "Auto-Disable"),
+            function() { autoSingle("disable", pkg); }));
+        }
+      })(item.pkg, item.state);
+      card.appendChild(actions);
+    }
+    return card;
+  }
+
+  /* -------------------------------------------------------------- cache tab */
+  function fetchCacheList() {
+    try {
+      return JSON.parse(window.AnneNative.getTopCacheAppsJson());
+    } catch (e) {
+      return null;
     }
   }
 
-  function openAppInfo(pkg) {
-    if (hasNative) window.AnneNative.openAppInfo(pkg);
+  function loadCacheList() {
+    var box = document.getElementById("cacheListContainer");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!hasNative) {
+      box.appendChild(cardWithText("Preview mode — install the APK to scan real cache sizes."));
+      return;
+    }
+    // Paint the busy state first: the bridge call blocks the JS thread for a
+    // few seconds on a P20 Lite while it queries every package.
+    box.appendChild(cardWithText("Scanning app caches… this takes a few seconds."));
+    setTimeout(function() {
+      var res = fetchCacheList();
+      renderCacheList(res);
+    }, 40);
+  }
+
+  function renderCacheList(res) {
+    var permCard = document.getElementById("cacheNeedPermCard");
+    var box = document.getElementById("cacheListContainer");
+    if (!box) return;
+    box.innerHTML = "";
+
+    if (!res) {
+      cacheItems = [];
+      box.appendChild(cardWithText("Could not read cache sizes."));
+      return;
+    }
+    if (res.needsUsageAccess) {
+      cacheItems = [];   /* never leave stale packages for autoCleanTopCaches */
+      if (permCard) permCard.classList.remove("hidden");
+      setText("totalCacheHeader", "Deep App Cache Cleaner");
+      return;
+    }
+    if (permCard) permCard.classList.add("hidden");
+
+    cacheItems = res.items || [];
+    setText("totalCacheHeader", "Reclaimable Cache: " + res.totalCacheMb + " MB");
+
+    if (!cacheItems.length) {
+      box.appendChild(cardWithText("App caches are already tiny (under 2 MB each)."));
+      return;
+    }
+
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < cacheItems.length; i++) {
+      frag.appendChild(cacheCard(cacheItems[i]));
+    }
+    box.appendChild(frag);
+  }
+
+  function cacheCard(ci) {
+    var card = make("div", "pkg-card");
+    var head = make("div", "pkg-head");
+    var info = make("div");
+    info.appendChild(make("div", "pkg-name", ci.label));
+    info.appendChild(make("div", "pkg-id", ci.pkg));
+    head.appendChild(info);
+    head.appendChild(makeBadge(ci.cacheMb + " MB Cache", "badge badge-warn"));
+    card.appendChild(head);
+
+    var actions = make("div", null, null, "display:flex;gap:8px;");
+    (function(pkg) {
+      actions.appendChild(onTap(make("button", "btn btn-sm btn-emerald", "Auto-Clear Cache"),
+        function() { autoSingle("clear_cache", pkg); }));
+      actions.appendChild(onTap(make("button", "btn btn-sm btn-outline", "Manual Storage"),
+        function() { openAppInfo(pkg); }));
+    })(ci.pkg);
+    card.appendChild(actions);
+    return card;
+  }
+
+  function autoCleanTopCaches() {
+    if (!hasNative) {
+      showBanner("Preview mode — install the APK on your P20 Lite.");
+      return;
+    }
+    showBanner("Scanning caches…");
+    setTimeout(function() {
+      window.AnneNative.invalidateScanCaches();
+      var res = fetchCacheList();
+      renderCacheList(res);
+      if (!cacheItems.length) {
+        openPerm("usage");
+        return;
+      }
+      var pkgs = [];
+      for (var i = 0; i < Math.min(15, cacheItems.length); i++) {
+        pkgs.push(cacheItems[i].pkg);
+      }
+      startAutomation("clear_cache", pkgs);
+    }, 40);
+  }
+
+  /* ------------------------------------------------------------ automation */
+  function startAutomation(mode, pkgs) {
+    if (!hasNative) {
+      showBanner("Preview mode — install the APK on your P20 Lite.");
+      return;
+    }
+    if (!pkgs || !pkgs.length) {
+      showBanner("No apps selected.");
+      return;
+    }
+    var res;
+    try {
+      res = JSON.parse(window.AnneNative.startAutomation(mode, pkgs.join(",")));
+    } catch (e) {
+      showBanner("Could not start: " + e);
+      return;
+    }
+    if (res.ok) {
+      showBanner("Running on " + res.queued + " app" + (res.queued === 1 ? "" : "s") +
+                 ". Tap STOP on the notification or press Volume Down to cancel.");
+    } else if (res.needsAccessibility) {
+      showBanner("Accessibility service is not running, so nothing was started. " +
+                 "Toggle it OFF and ON in Settings.");
+    } else {
+      showBanner("Could not start: " + (res.message || "unknown error"));
+    }
   }
 
   function autoSingle(mode, pkg) {
-    if (hasNative) window.AnneNative.startAutomation(mode, pkg);
+    startAutomation(mode, [pkg]);
   }
 
   function autoRunSafeBloat(mode) {
-    if (!hasNative) return;
-    if (!bloatItems.length) loadBloatList();
+    if (!hasNative) {
+      showBanner("Preview mode — install the APK on your P20 Lite.");
+      return;
+    }
+    if (!bloatItems.length) loadBloatList(false);
     var pkgs = [];
     for (var i = 0; i < bloatItems.length; i++) {
       if (bloatItems[i].tier === "safe" && bloatItems[i].state === "active") {
@@ -772,118 +1110,96 @@
       }
     }
     if (!pkgs.length) {
-      showBanner("All safe Huawei bloat apps are already disabled or not present!");
+      showBanner("All safe bloat apps are already disabled or not present on this phone.");
       return;
     }
-    window.AnneNative.startAutomation(mode, pkgs.join(","));
+    startAutomation(mode, pkgs);
   }
 
-  function loadCacheList() {
-    if (!hasNative) return;
-    try {
-      var res = JSON.parse(window.AnneNative.getTopCacheAppsJson());
-      var permCard = document.getElementById("cacheNeedPermCard");
-      var box = document.getElementById("cacheListContainer");
-      box.innerHTML = "";
-      if (res.needsUsageAccess) {
-        permCard.classList.remove("hidden");
-        document.getElementById("totalCacheHeader").textContent = "Deep App Cache Cleaner";
-        return;
-      }
-      permCard.classList.add("hidden");
-      cacheItems = res.items || [];
-      document.getElementById("totalCacheHeader").textContent =
-        "Reclaimable Cache: " + res.totalCacheMb + " MB";
-
-      if (!cacheItems.length) {
-        box.innerHTML = '<div class="card"><p>Your app caches are already clean (under 2 MB per app)!</p></div>';
-        return;
-      }
-
-      for (var i = 0; i < cacheItems.length; i++) {
-        var ci = cacheItems[i];
-        var card = document.createElement("div");
-        card.className = "pkg-card";
-        card.innerHTML =
-          '<div class="pkg-head">' +
-            '<div><div class="pkg-name">' + ci.label + '</div><div class="pkg-id">' + ci.pkg + '</div></div>' +
-            '<span class="badge badge-warn">' + ci.cacheMb + ' MB Cache</span>' +
-          '</div>' +
-          '<div style="display:flex;gap:8px;">' +
-            '<button class="btn btn-sm btn-emerald" onclick="autoSingle(\'clear_cache\',\'' + ci.pkg + '\')">Auto-Clear Cache</button>' +
-            '<button class="btn btn-sm btn-outline" onclick="openAppInfo(\'' + ci.pkg + '\')">Manual Storage</button>' +
-          '</div>';
-        box.appendChild(card);
-      }
-    } catch (e) {}
+  /* ------------------------------------------------------------ misc actions */
+  function openPerm(target) {
+    if (hasNative) window.AnneNative.openPermissionScreen(target);
   }
 
-  function autoCleanTopCaches() {
+  function openAppInfo(pkg) {
+    if (hasNative) window.AnneNative.openAppInfo(pkg);
+  }
+
+  function applyFontScale(scale) {
     if (!hasNative) return;
-    loadCacheList();
-    if (!cacheItems.length) {
-      openPerm("usage");
-      return;
+    if (window.AnneNative.setCompactFontScale(scale)) {
+      refreshDashboard();
+      showBanner("✓ Updated the system text scale to " + scale + "x.");
     }
-    var pkgs = [];
-    for (var i = 0; i < Math.min(15, cacheItems.length); i++) {
-      pkgs.push(cacheItems[i].pkg);
+  }
+
+  function copyText(text, msg) {
+    if (hasNative) {
+      window.AnneNative.copyToClipboard(text, msg);
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      showBanner(msg);
     }
-    window.AnneNative.startAutomation("clear_cache", pkgs.join(","));
   }
 
   function copyAdbScript() {
-    var txt = document.getElementById("adbScriptCode").textContent;
-    if (hasNative) {
-      window.AnneNative.copyToClipboard(txt, "Copied ADB bloat script to clipboard!");
-    } else {
-      navigator.clipboard && navigator.clipboard.writeText(txt);
-      showBanner("Copied ADB bloat script to clipboard!");
-    }
+    var el = document.getElementById("adbScriptCode");
+    copyText(el ? el.textContent : "", "Copied the ADB bloat script to the clipboard.");
   }
 
   function shareAdbScript() {
-    var txt = document.getElementById("adbScriptCode").textContent;
-    if (hasNative) {
-      window.AnneNative.shareText("Huawei P20 Lite ADB Bloatware Script", txt);
+    var el = document.getElementById("adbScriptCode");
+    if (hasNative && el) {
+      window.AnneNative.shareText("Huawei P20 Lite ADB Bloatware Script", el.textContent);
     }
   }
 
   function copyAdbPerm() {
-    var txt = document.getElementById("adbPermCode").textContent;
-    if (hasNative) {
-      window.AnneNative.copyToClipboard(txt, "Copied ADB permission grant command!");
-    } else {
-      navigator.clipboard && navigator.clipboard.writeText(txt);
-      showBanner("Copied ADB permission grant command!");
-    }
+    var el = document.getElementById("adbPermCode");
+    copyText(el ? el.textContent : "", "Copied the ADB grant command.");
   }
 
   function dialCode(code) {
-    if (hasNative) {
-      window.AnneNative.openDialerCode(code);
-    }
+    if (hasNative) window.AnneNative.openDialerCode(code);
   }
 
+  /* ------------------------------------------------------------------ boot */
   function refreshAll() {
     refreshDashboard();
-    if (currentTab === "bloat") loadBloatList();
+    if (currentTab === "bloat") loadBloatList(false);
     if (currentTab === "cache") loadCacheList();
   }
 
   window.onAnneResume = function() {
     refreshAll();
-    if (hasNative) {
-      try {
-        var st = JSON.parse(window.AnneNative.getAutomationStatusJson());
-        if (!st.running && st.succeededCount > 0) {
-          showBanner("✓ " + st.message);
-        }
-      } catch (e) {}
-    }
+    if (!hasNative) return;
+    try {
+      // A run can still be in flight if the user navigated back manually; give them
+      // a third way out (besides the notification and Volume Down).
+      var st = JSON.parse(window.AnneNative.getAutomationStatusJson());
+      if (st.running) {
+        showBanner("Run in progress (" + (st.currentIndex + 1) + "/" + st.totalCount +
+                   "). Tap here to stop.", function() {
+          window.AnneNative.stopAutomation();
+          showBanner("Stopping…");
+        });
+        return;
+      }
+      var res = JSON.parse(window.AnneNative.consumeRunSummaryJson());
+      if (res.available && res.message) {
+        showBanner(res.message);
+      }
+    } catch (e) {}
   };
 
   refreshAll();
+  // Deferred: enumerating every installed app for the Keep Alive list costs a few
+  // hundred ms, so let the dashboard paint first.
+  if (hasNative) {
+    setTimeout(function() { loadKeepList(false); }, 250);
+  } else {
+    renderKeepList();
+  }
 </script>
 </body>
 </html>

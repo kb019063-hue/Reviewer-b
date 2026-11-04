@@ -3,4 +3,7 @@ build/
 *.apk
 *.idsig
 *.keystore
+*.jks
+*.b64
+keystore/
 __pycache__/

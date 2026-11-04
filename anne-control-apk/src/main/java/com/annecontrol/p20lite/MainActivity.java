@@ -14,6 +14,8 @@ import android.webkit.WebViewClient;
 
 public class MainActivity extends Activity {
 
+    private static final String JS_RESUME = "window.onAnneResume && window.onAnneResume();";
+
     private WebView webView;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
@@ -43,26 +45,59 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new SystemBridge(this, webView), "AnneNative");
 
         setContentView(webView);
-        webView.loadUrl("file:///android_asset/index.html");
+
+        // EMUI 9.1 kills backgrounded apps aggressively; if the process does go away
+        // while the user is in Settings, restore the WebView instead of reloading it.
+        boolean restored = false;
+        if (savedInstanceState != null) {
+            restored = webView.restoreState(savedInstanceState) != null;
+        }
+        if (!restored) {
+            webView.loadUrl("file:///android_asset/index.html");
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (webView != null) {
+            webView.saveState(outState);
+        }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         if (webView != null) {
-            webView.evaluateJavascript("window.onAnneResume && window.onAnneResume();", null);
+            webView.evaluateJavascript(JS_RESUME, null);
         }
     }
 
     @Override
     public void onBackPressed() {
-        if (AutomationEngine.get().isRunning()) {
-            AutomationEngine.get().stop();
+        AutomationEngine engine = AutomationEngine.get();
+        if (engine.isRunning()) {
+            engine.stop();
             if (webView != null) {
-                webView.evaluateJavascript("window.onAnneResume && window.onAnneResume();", null);
+                webView.evaluateJavascript(JS_RESUME, null);
             }
             return;
         }
         super.onBackPressed();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (webView != null) {
+            try {
+                webView.removeJavascriptInterface("AnneNative");
+                webView.setWebChromeClient(null);
+                webView.setWebViewClient(null);
+                webView.destroy();
+            } catch (Exception ignored) {
+            }
+            webView = null;
+        }
+        super.onDestroy();
     }
 }
