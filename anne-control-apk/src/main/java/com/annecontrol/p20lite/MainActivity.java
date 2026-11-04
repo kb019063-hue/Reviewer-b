@@ -34,12 +34,13 @@ public class MainActivity extends Activity {
         WebSettings ws = webView.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
-        ws.setAllowFileAccess(true);
+        ws.setAllowFileAccess(false); // Secure against local storage traversal
+        ws.setAllowContentAccess(false);
         ws.setTextZoom(100);
 
         webView.setWebViewClient(new WebViewClient());
         webView.setWebChromeClient(new WebChromeClient());
-        webView.addJavascriptInterface(new SystemBridge(getApplicationContext()), "AnneNative");
+        webView.addJavascriptInterface(new SystemBridge(this, webView), "AnneNative");
 
         setContentView(webView);
         webView.loadUrl("file:///android_asset/index.html");

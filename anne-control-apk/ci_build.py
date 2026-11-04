@@ -16,6 +16,8 @@ SRC_MAIN = PROJECT_DIR / "src" / "main"
 WORK_DIR = Path("/tmp/annecontrol-ci-work")
 DIST_DIR = REPO_ROOT / "dist"
 FINAL_APK = DIST_DIR / "AnneControl-P20Lite.apk"
+KEYSTORE_DIR = REPO_ROOT / "keystore"
+KEYSTORE_FILE = KEYSTORE_DIR / "annecontrol-release.jks"
 
 
 def run(cmd: list[str]):
@@ -54,6 +56,24 @@ def find_sdk_tools():
     print(f"Using build-tools: {bt}")
     print(f"Using android.jar: {android_jar}")
     return bt, android_jar
+
+
+def ensure_release_keystore():
+    KEYSTORE_DIR.mkdir(parents=True, exist_ok=True)
+    if not KEYSTORE_FILE.exists():
+        print("Generating persistent release keystore...")
+        run([
+            "keytool", "-genkeypair",
+            "-keystore", KEYSTORE_FILE,
+            "-storepass", "annecontrol2026",
+            "-keypass", "annecontrol2026",
+            "-alias", "annecontrol",
+            "-keyalg", "RSA",
+            "-keysize", "2048",
+            "-validity", "10000",
+            "-dname", "CN=AnneControl, OU=HuaweiP20Lite, O=AnneControl, C=GH",
+        ])
+    return KEYSTORE_FILE
 
 
 def main():
@@ -127,19 +147,8 @@ def main():
     aligned_apk = WORK_DIR / "aligned.apk"
     run([zipalign, "-f", "-p", "4", unaligned_apk, aligned_apk])
 
-    # 7. Generate signing keystore & sign APK (v1 + v2 + v3 for Huawei Android 9 compatibility)
-    keystore = WORK_DIR / "annecontrol-release.jks"
-    run([
-        "keytool", "-genkeypair",
-        "-keystore", keystore,
-        "-storepass", "annecontrol2026",
-        "-keypass", "annecontrol2026",
-        "-alias", "annecontrol",
-        "-keyalg", "RSA",
-        "-keysize", "2048",
-        "-validity", "10000",
-        "-dname", "CN=AnneControl, OU=HuaweiP20Lite, O=AnneControl, C=GH",
-    ])
+    # 7. Persistent Signing Keystore & sign APK (v1 + v2 + v3 for Huawei Android 9 compatibility)
+    keystore = ensure_release_keystore()
 
     run([
         apksigner, "sign",
