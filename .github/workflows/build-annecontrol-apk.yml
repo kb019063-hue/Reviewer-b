@@ -51,6 +51,8 @@ jobs:
         env:
           # Base64 of keystore/annecontrol-release.jks. Without it every build gets a
           # fresh throwaway key and installed users can no longer update in place.
+          # One secret, one paste: "<base64 keystore>|<password>"
+          ANNE_SIGNING_KEY: ${{ secrets.ANNE_SIGNING_KEY }}
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}

@@ -29,7 +29,18 @@ keytool -genkeypair \
 base64 -w0 keystore/annecontrol-release.jks
 ```
 
-Then in **Settings → Secrets and variables → Actions**, add:
+Then in **Settings → Secrets and variables → Actions**, create **one** secret.
+
+**The quick way — one secret.** Name it `ANNE_SIGNING_KEY` and give it one line:
+
+    <base64 of the .jks>|<store password>|<key password>
+
+If the keystore was created with the same store and key password (as in step 1), the
+shorter `<base64>|<password>` form is fine too. `ci_build.py` splits it, writes the
+keystore with mode 600, and passes the passwords to `apksigner` through `env:`, so
+they never reach the log.
+
+The older three-secret form still works and wins if present:
 
 | Secret | Value |
 |---|---|
@@ -38,6 +49,13 @@ Then in **Settings → Secrets and variables → Actions**, add:
 | `RELEASE_KEY_PASSWORD` | the `-keypass` you chose |
 
 `keystore/`, `*.jks` and `*.b64` are git-ignored — never commit the key.
+
+> **Why can't the build just create the secret itself?** GitHub does not grant the
+> `secrets` permission to a workflow's `GITHUB_TOKEN`, not even with
+> `permissions: write-all` (verified on this repo: `HTTP 403 Resource not accessible
+> by integration`). That is deliberate — otherwise any workflow, or any action it
+> calls, could overwrite the signing key and ship an update the phone would accept.
+> So this one secret has to be entered by a human, once.
 
 If the secret is missing, `ci_build.py` still produces a working APK, but it prints a
 GitHub Actions warning: that build is signed with a **throwaway** key and will not install

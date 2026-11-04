@@ -125,6 +125,26 @@ def resolve_keystore():
     """Returns (path, is_persistent). See the module docstring."""
     KEYSTORE_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Single-secret form, for people who would rather paste once than three times:
+    #   "<base64 keystore>|<password>"  or  "<base64 keystore>|<storepass>|<keypass>"
+    combined = os.environ.get("ANNE_SIGNING_KEY", "").strip()
+    if combined:
+        parts = combined.split("|")
+        if len(parts) not in (2, 3):
+            sys.exit("ERROR: ANNE_SIGNING_KEY must be '<base64 keystore>|<password>' "
+                     "or '<base64 keystore>|<storepass>|<keypass>'")
+        try:
+            KEYSTORE_FILE.write_bytes(base64.b64decode(parts[0], validate=True))
+        except Exception as exc:
+            sys.exit(f"ERROR: ANNE_SIGNING_KEY does not start with valid base64: {exc}")
+        os.chmod(KEYSTORE_FILE, 0o600)
+        if not os.environ.get("RELEASE_STORE_PASSWORD"):
+            os.environ["RELEASE_STORE_PASSWORD"] = parts[1]
+        if not os.environ.get("RELEASE_KEY_PASSWORD"):
+            os.environ["RELEASE_KEY_PASSWORD"] = parts[-1]
+        print(f"Restored release keystore from ANNE_SIGNING_KEY -> {KEYSTORE_FILE}")
+        return KEYSTORE_FILE, True
+
     encoded = os.environ.get("RELEASE_KEYSTORE_B64", "").strip()
     if encoded:
         KEYSTORE_FILE.write_bytes(base64.b64decode(encoded))
@@ -137,7 +157,7 @@ def resolve_keystore():
 
     print("::warning::No release keystore provided - generating a THROWAWAY key. "
           "APKs built with it cannot be installed over ones signed with a different key. "
-          "Set the RELEASE_KEYSTORE_B64 repository secret to fix this (see README.md).")
+          "Add the ANNE_SIGNING_KEY repository secret to fix this (see README.md).")
     run([
         "keytool", "-genkeypair",
         "-keystore", KEYSTORE_FILE,

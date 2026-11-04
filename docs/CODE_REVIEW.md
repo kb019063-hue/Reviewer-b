@@ -520,3 +520,15 @@ Additional work after the first fix round:
 * **`QueuePlanner`** — queue filtering, ordering, outcome counters and summary text moved out of `AutomationEngine` into a pure-Java class, covered by `test/java/.../QueuePlannerTest.java` (22 assertions) that `ci_build.py` compiles and runs on a plain JVM before building. The engine now delegates, so `start()`/`advance`-related regressions (duplicates, protected-package filtering, overrun past the queue, unknown outcomes) are caught without a device.
 * **UI regression suite** — `test/ui/ui_test.js` runs the real `index.html` under jsdom against a stub bridge; `test/ui/package.json` pins jsdom. Wired in as its own workflow step.
 * **Localisation** — `res/values-de|es|fr|pt/strings.xml` for the accessibility service label and consent description (what a non-English user reads before granting the permission).
+
+### Note on automating the secret upload
+
+Writing the signing key into the repository secrets cannot be automated from inside
+CI. A workflow's `GITHUB_TOKEN` is an installation token of the Actions app, and
+`secrets` is intentionally not in its grantable permission set — a workflow declaring
+`permissions: write-all` still gets `403 Resource not accessible by integration` from
+`PUT /actions/secrets` on this repository (verified). Anything that *could* carry the
+key instead of a secret (artifact, cache, package, commit) is either readable by any
+authenticated GitHub user on a public repository or expires; both are worse than one
+manual paste. `ci_build.py` therefore accepts a single `ANNE_SIGNING_KEY` secret
+(`<base64>|<password>`) to keep that paste to one field.
