@@ -21,6 +21,10 @@ builds sign with the same certificate, so a new APK installs as an upgrade, with
 secrets and no setup. This is the same mechanism as a committed `debug.keystore` in
 a Gradle project.
 
+Each build ends by checking the APK's signer digest against
+`EXPECTED_SIGNER_SHA256` in `ci_build.py`; if a build ever produces a different
+certificate, it fails instead of shipping an APK that nothing can update.
+
 **The catch, recorded here so it is a decision and not an accident:** that key is
 public. Anyone who can read this repository can produce an APK your phone accepts as
 an update to AnneControl. For a sideloaded cleanup tool with no `INTERNET` permission

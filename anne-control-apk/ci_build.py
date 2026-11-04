@@ -45,6 +45,10 @@ SIGNING_DIR = PROJECT_DIR / "signing"
 COMMITTED_KEYSTORE = SIGNING_DIR / "annecontrol.keystore"
 COMMITTED_STORE_PASSWORD = "23Spq3Q8UDnLcoXUpRG5m3GA"
 COMMITTED_KEY_PASSWORD = "23Spq3Q8UDnLcoXUpRG5m3GA"
+# Certificate digest of the committed key. Guarded at the end of every build: if an
+# APK ever comes out signed by anything else, installed copies could no longer be
+# updated, and that must fail the build instead of shipping quietly.
+EXPECTED_SIGNER_SHA256 = "c264cf3d7e1f8eabd20ae0b9f3a732f3a34315b4a352367285872e88d16f3c29"
 KEYSTORE_FILE = KEYSTORE_DIR / "annecontrol-release.jks"
 
 KEY_ALIAS = "annecontrol"
@@ -224,6 +228,22 @@ def signing_password_args(passwords=None):
     return store + key
 
 
+def assert_signer(verify_output, expected_hex):
+    """The APK must carry the committed certificate, or upgrades break silently."""
+    match = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)", verify_output)
+    if not match:
+        sys.exit("ERROR: could not read the signer certificate from apksigner output")
+    actual = match.group(1).lower()
+    if actual != expected_hex:
+        sys.exit(
+            "ERROR: APK is signed by\n  " + actual + "\nbut the committed key is\n  "
+            + expected_hex + "\nA different certificate means installed copies cannot be "
+            "updated (Android refuses the upgrade). If the key was rotated on purpose, "
+            "update EXPECTED_SIGNER_SHA256 and expect one uninstall."
+        )
+    print(f"Signer matches the committed key: {actual[:16]}...")
+
+
 def main():
     # Fast-fail on logic regressions before touching the Android toolchain.
     run_unit_tests()
@@ -320,6 +340,8 @@ def main():
     # 8. Verify APK signature & print badging summary
     verify_out = run([apksigner, "verify", "--verbose", "--print-certs", FINAL_APK])
     print(verify_out)
+    if persistent and keystore == COMMITTED_KEYSTORE:
+        assert_signer(verify_out, EXPECTED_SIGNER_SHA256)
     badging_out = run([aapt2, "dump", "badging", FINAL_APK])
     print(badging_out)
     print(f"Built signed APK: {FINAL_APK} ({FINAL_APK.stat().st_size} bytes)")
