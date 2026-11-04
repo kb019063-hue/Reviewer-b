@@ -21,6 +21,8 @@ public class HuaweiCatalog {
     }
 
     public static final BloatEntry[] ENTRIES = new BloatEntry[] {
+        new BloatEntry("com.huawei.powergenie", "Huawei PowerGenie Daemon", "Aggressive RAM Killer", "safe", "High",
+            "Root cause of EMUI 9.1 app reloads! Kills recent background apps in under a minute regardless of free RAM. Disabling or stopping this allows apps to stay alive in Recent Apps."),
         new BloatEntry("com.huawei.search", "Huawei HiSearch", "EMUI Home Clutter", "safe", "High",
             "Laggy swipe-down global search bar on the home screen. Disabling or force-stopping frees RAM and stops accidental swipe lag."),
         new BloatEntry("com.huawei.intelligent", "Huawei Assistant / HiBoard", "EMUI Home Clutter", "safe", "High",

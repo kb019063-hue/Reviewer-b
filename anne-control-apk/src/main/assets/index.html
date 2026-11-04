@@ -434,6 +434,39 @@
   <!-- ================= TAB 4: EMUI 9.1 BUG FIXES ================= -->
   <div id="tab-fixes" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
 
+    <!-- FIX 0: STOP APPS RELOADING / RESTARTING IN RECENTS -->
+    <div class=card style="border: 1px solid rgba(56, 189, 248, 0.4); background: linear-gradient(145deg, rgba(14, 165, 233, 0.12), #0f172a);">
+      <span class="badge badge-sky">Fix Apps Reloading In Recents</span>
+      <h3 style="margin-top:6px;">🛑 Stop EMUI 9.1 From Killing Recent Apps</h3>
+      <p>EMUI 9.1 introduced an ultra-aggressive internal daemon (<strong>PowerGenie</strong>) that forcibly kills apps in the background within 60 seconds even when you have 2–3 GB free RAM. Follow these 3 direct phone steps:</p>
+
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
+        <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 1: Set App Launch to Manual</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Turn OFF 'Manage automatically' for apps you switch between, and toggle ON Auto-launch, Secondary launch &amp; Run in background.</div>
+          <button class="btn btn-primary" style="margin-top:7px;padding:9px;font-size:12px;" onclick="openPerm('huawei_applaunch')">Open App Launch Settings →</button>
+        </div>
+
+        <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 2: Disable Battery Optimization (Doze)</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Switch filter to 'All apps', select your apps, and change to 'Don't allow'.</div>
+          <button class="btn btn-amber" style="margin-top:7px;padding:9px;font-size:12px;" onclick="openPerm('raw_doze')">Open Raw Android Doze List →</button>
+        </div>
+
+        <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 3: Auto-Disable Huawei PowerGenie</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Automatically Force-Stop or Disable Huawei's aggressive background killer daemon hands-free.</div>
+          <button class="btn btn-emerald" style="margin-top:7px;padding:9px;font-size:12px;" onclick="autoSingle('disable', 'com.huawei.powergenie')">Auto-Disable PowerGenie →</button>
+        </div>
+
+        <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 4: Lock App in Recent Apps Screen</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Open your recent apps overview (swipe up or tap square button), then <strong>swipe DOWN</strong> on the app card until a 🔒 padlock icon appears!</div>
+        </div>
+      </div>
+    </div>
+
+
     <!-- FIX 1: 0.5x GPU ANIMATIONS -->
     <div class="card">
       <span class="badge badge-sky">Biggest Lag Fix on Kirin 659</span>
