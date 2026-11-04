@@ -39,6 +39,8 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class SystemBridge {
 
@@ -46,6 +48,7 @@ public class SystemBridge {
     private final Activity activity;
     private final WebView webView;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService scanExecutor = Executors.newSingleThreadExecutor();
 
     // Battery status caching to eliminate redundant IPC calls
     private long lastBatteryFetchTime = 0L;
@@ -470,6 +473,10 @@ public class SystemBridge {
 
     @JavascriptInterface
     public String getHuaweiBloatListJson() {
+        return buildBloatListJson();
+    }
+
+    private String buildBloatListJson() {
         try {
             boolean canReadStats = hasUsageAccess() && Build.VERSION.SDK_INT >= 26;
             long now = System.currentTimeMillis();
@@ -540,14 +547,13 @@ public class SystemBridge {
     /**
      * Cache sizes per app.
      *
-     * Notes on cost: each queryStatsForPackage() is a binder round-trip, so the
-     * previous version spent seconds on the (single-threaded) JS bridge while the
-     * WebView felt frozen. Two mitigations: skip system packages, which are the
-     * bulk of the installed list and almost never the ones a user reclaims from,
-     * and memoise the result so switching tabs back and forth is free.
+     * Runs on the scan executor (see scanCachesAsync), never on the WebView thread:
+     * each queryStatsForPackage() is a binder round-trip, and the first version of
+     * this method spent seconds blocking the single-threaded JS bridge. System
+     * packages are skipped (they are most of the list and rarely what a user
+     * reclaims) and results are memoised so revisiting a tab is free.
      */
-    @JavascriptInterface
-    public String getTopCacheAppsJson() {
+    private String buildCacheScanJson() {
         try {
             if (!hasUsageAccess() || Build.VERSION.SDK_INT < 26) {
                 cachedCacheJson = null;
@@ -569,6 +575,14 @@ public class SystemBridge {
             long allCacheBytes = 0L;
             int scanned = 0;
 
+            int totalCandidates = 0;
+            for (int i = 0; i < apps.size(); i++) {
+                ApplicationInfo ai = apps.get(i);
+                if (ai == null || ai.packageName == null) continue;
+                if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
+                totalCandidates++;
+            }
+
             for (int i = 0; i < apps.size(); i++) {
                 ApplicationInfo ai = apps.get(i);
                 if (ai == null || ai.packageName == null) continue;
@@ -580,6 +594,10 @@ public class SystemBridge {
                             android.os.Process.myUserHandle()
                     );
                     scanned++;
+                    if (scanned % 8 == 0) {
+                        postJs("window.onScanProgress && window.onScanProgress('cache',"
+                                + scanned + "," + totalCandidates + ")");
+                    }
                     long cb = st.getCacheBytes();
                     // Total counts every scanned app, so the headline figure is not
                     // silently limited to the apps large enough to list below.
@@ -635,6 +653,66 @@ public class SystemBridge {
         lastBloatScanTime = 0L;
         cachedCacheJson = null;
         cachedBloatJson = null;
+    }
+
+    /** Runs a JS snippet on the WebView thread. Safe to call from the scan thread. */
+    private void postJs(final String js) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (webView == null) return;
+                try {
+                    webView.evaluateJavascript(js, null);
+                } catch (Exception ignored) {
+                }
+            }
+        });
+    }
+
+    /**
+     * Scans caches off the JS thread and streams progress plus the result back to the
+     * page. The synchronous variant blocks the single-threaded WebView for seconds on
+     * a P20 Lite (~150 binder round-trips), which is what made this tab feel frozen.
+     */
+    @JavascriptInterface
+    public void scanCachesAsync() {
+        scanExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                String json;
+                try {
+                    json = buildCacheScanJson();
+                } catch (Exception e) {
+                    json = "{\"needsUsageAccess\":false,\"error\":true,\"items\":[]}";
+                }
+                postJs("window.onCacheScan && window.onCacheScan(" + json + ")");
+            }
+        });
+    }
+
+    /** Async variant of the bloat catalog read (29 StorageStats queries). */
+    @JavascriptInterface
+    public void scanBloatListAsync() {
+        scanExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                String json;
+                try {
+                    json = buildBloatListJson();
+                } catch (Exception e) {
+                    json = "[]";
+                }
+                postJs("window.onBloatScan && window.onBloatScan(" + json + ")");
+            }
+        });
+    }
+
+    /** Called from MainActivity.onDestroy(). */
+    public void shutdown() {
+        try {
+            scanExecutor.shutdownNow();
+        } catch (Exception ignored) {
+        }
     }
 
     @JavascriptInterface

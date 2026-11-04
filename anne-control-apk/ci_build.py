@@ -30,6 +30,9 @@ SRC_MAIN = PROJECT_DIR / "src" / "main"
 WORK_DIR = Path("/tmp/annecontrol-ci-work")
 DIST_DIR = REPO_ROOT / "dist"
 FINAL_APK = DIST_DIR / "AnneControl-P20Lite.apk"
+TEST_SRC = PROJECT_DIR / "test" / "java"
+# Classes with no Android imports, so they can be compiled and run on a plain JVM.
+PURE_JAVA = ("HuaweiCatalog.java", "QueuePlanner.java")
 KEYSTORE_DIR = REPO_ROOT / "keystore"
 KEYSTORE_FILE = KEYSTORE_DIR / "annecontrol-release.jks"
 
@@ -90,6 +93,34 @@ def find_sdk_tools():
     return bt, android_jar
 
 
+def run_unit_tests():
+    """
+    Compiles the Android-free logic (QueuePlanner + HuaweiCatalog) together with the
+    tests and runs them on the desktop JVM. A failing assertion fails the APK build.
+    """
+    sources = []
+    for name in PURE_JAVA:
+        found = list((SRC_MAIN / "java").rglob(name))
+        if not found:
+            sys.exit(f"ERROR: {name} not found for the unit-test step")
+        sources.extend(found)
+    test_sources = sorted(TEST_SRC.rglob("*.java"))
+    if not test_sources:
+        sys.exit(f"ERROR: no test sources found under {TEST_SRC}")
+    sources.extend(test_sources)
+
+    out_dir = Path("/tmp/annecontrol-unit-tests")
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True)
+
+    print("Running JVM unit tests...")
+    run(["javac", "-encoding", "UTF-8", "-Xlint:all,-options", "-d", out_dir]
+        + [str(f) for f in sources], show_stderr=True)
+    output = run(["java", "-cp", out_dir, "com.annecontrol.p20lite.QueuePlannerTest"])
+    print(output)
+
+
 def resolve_keystore():
     """Returns (path, is_persistent). See the module docstring."""
     KEYSTORE_DIR.mkdir(parents=True, exist_ok=True)
@@ -135,6 +166,9 @@ def signing_password_args():
 
 
 def main():
+    # Fast-fail on logic regressions before touching the Android toolchain.
+    run_unit_tests()
+
     bt, android_jar = find_sdk_tools()
     aapt2 = bt / "aapt2"
     d8 = bt / "d8"

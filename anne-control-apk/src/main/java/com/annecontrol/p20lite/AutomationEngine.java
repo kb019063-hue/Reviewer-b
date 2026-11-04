@@ -16,26 +16,26 @@ import android.os.SystemClock;
 import android.provider.Settings;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
  * Drives the Settings UI one package at a time: open App info, wait for
  * {@link AnneAccessibilityService} to report what it did, move on.
  *
- * Design notes (see docs/CODE_REVIEW.md, items 1.1 / 2.6 / 3.2):
+ * Queue/outcome bookkeeping lives in {@link QueuePlanner} (pure Java, unit tested);
+ * this class adds the Android bits: navigation, timeouts and the ongoing
+ * notification that lets the user cancel while Settings is on top.
  *
- *  - Every state transition funnels through {@link #advanceInternal(int, String)},
- *    so counters, the safety timeout and the "open the next package" navigation
- *    can never drift apart.
- *  - {@link #generation} invalidates callbacks queued by a previous run. Starting
- *    a new run while one is active used to leave a stale "open next package"
- *    runnable behind, which then skipped a package.
- *  - An ongoing notification with a STOP action is the only way the user can
- *    cancel while Settings is in the foreground (the app's own UI is unreachable
- *    at that point).
- *  - The expected package *label* is resolved up front and handed to the
- *    accessibility service, which refuses to click anything until the visible
- *    screen is verified to be that app.
+ * Design notes (docs/CODE_REVIEW.md 1.1 / 2.6 / 3.2):
+ *  - Every state transition funnels through {@link #advanceInternal(int, String)}, so
+ *    counters, the safety timeout and the "open the next package" navigation cannot
+ *    drift apart.
+ *  - {@link #generation} invalidates callbacks queued by a previous run. Starting a
+ *    new run while one was active used to leave a stale "open next package" runnable
+ *    behind, which then skipped a package.
+ *  - An ongoing notification with a STOP action (plus a Volume Down hook in the
+ *    accessibility service) is the only way to cancel while Settings is in front.
  */
 public class AutomationEngine {
 
@@ -52,9 +52,9 @@ public class AutomationEngine {
     public static final int STEP_DONE_PACKAGE = 4;
 
     // Outcomes reported by the accessibility service
-    public static final int OUTCOME_SUCCESS = 0;
-    public static final int OUTCOME_SKIPPED = 1;
-    public static final int OUTCOME_FAILED = 2;
+    public static final int OUTCOME_SUCCESS = QueuePlanner.OUTCOME_SUCCESS;
+    public static final int OUTCOME_SKIPPED = QueuePlanner.OUTCOME_SKIPPED;
+    public static final int OUTCOME_FAILED = QueuePlanner.OUTCOME_FAILED;
 
     private static final long NAV_SETTLE_MS = 380L;
     private static final long TIMEOUT_FIRST_PAGE_MS = 4600L;
@@ -70,16 +70,12 @@ public class AutomationEngine {
     }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private final List<String> queue = new ArrayList<String>();
     private final List<String> labels = new ArrayList<String>();
 
+    private QueuePlanner plan = new QueuePlanner(Collections.<String>emptyList(), true);
     private String mode = MODE_NONE;
-    private int currentIndex = 0;
     private int step = STEP_IDLE;
     private boolean running = false;
-    private int successCount = 0;
-    private int skippedCount = 0;
-    private int failedCount = 0;
     private String statusMessage = "Idle";
     private String lastSummary = null;
     private int generation = 0;
@@ -103,46 +99,37 @@ public class AutomationEngine {
             statusMessage = "Unknown mode: " + requestedMode;
             return;
         }
-        if (packages == null) packages = new ArrayList<String>();
 
         // Invalidates every callback queued by a previous run before we touch state.
         generation++;
         handler.removeCallbacksAndMessages(null);
 
         this.appContext = ctx.getApplicationContext();
-        this.queue.clear();
-        this.labels.clear();
+        this.plan = new QueuePlanner(packages, !MODE_CLEAR_CACHE.equals(requestedMode));
 
-        for (int i = 0; i < packages.size(); i++) {
-            String p = packages.get(i);
-            if (p == null || p.length() == 0) continue;
-            if (!MODE_CLEAR_CACHE.equals(requestedMode) && HuaweiCatalog.isProtected(p)) continue;
-            if (queue.contains(p)) continue;
-            queue.add(p);
-            labels.add(resolveLabel(p));
+        this.labels.clear();
+        List<String> packagesIn = plan.packages();
+        for (int i = 0; i < packagesIn.size(); i++) {
+            labels.add(resolveLabel(packagesIn.get(i)));
         }
 
-        if (queue.isEmpty()) {
+        if (plan.isEmpty()) {
             running = false;
             mode = MODE_NONE;
             setStepInternal(STEP_IDLE);
-            statusMessage = "No eligible packages in queue.";
+            statusMessage = plan.summary();
             lastSummary = statusMessage;
             cancelNotification();
             return;
         }
 
         this.mode = requestedMode;
-        this.currentIndex = 0;
-        this.successCount = 0;
-        this.skippedCount = 0;
-        this.failedCount = 0;
         this.running = true;
         this.lastSummary = null;
         openCurrentPackageSettings(generation);
     }
 
-    /** User-initiated cancel (back button in-app, or the notification STOP action). */
+    /** User-initiated cancel (back button in-app, the notification, or Volume Down). */
     public synchronized void stop() {
         handler.removeCallbacksAndMessages(null);
         cancelNotification();
@@ -152,7 +139,7 @@ public class AutomationEngine {
         running = false;
         mode = MODE_NONE;
         setStepInternal(STEP_IDLE);
-        lastSummary = "Cancelled after " + successCount + " of " + queue.size() + " apps.";
+        lastSummary = "Cancelled after " + plan.processed() + " of " + plan.size() + " apps.";
         statusMessage = lastSummary;
         returnToApp();
     }
@@ -187,8 +174,8 @@ public class AutomationEngine {
     }
 
     /**
-     * How long the current step has been waiting. Used by the accessibility
-     * service to allow a page to render before deciding a screen mismatch is real.
+     * How long the current step has been waiting. Used by the accessibility service
+     * to allow a page to render before deciding a screen mismatch is real.
      */
     public synchronized long getStepElapsedMs() {
         if (stepStartedAt <= 0L) return 0L;
@@ -196,10 +183,9 @@ public class AutomationEngine {
     }
 
     public synchronized String getCurrentPackage() {
-        if (!running || currentIndex < 0 || currentIndex >= queue.size()) {
-            return "";
-        }
-        return queue.get(currentIndex);
+        if (!running) return "";
+        String current = plan.current();
+        return current == null ? "" : current;
     }
 
     /**
@@ -208,30 +194,30 @@ public class AutomationEngine {
      * the app it is about to force-stop / disable.
      */
     public synchronized String getExpectedLabel() {
-        if (!running || currentIndex < 0 || currentIndex >= labels.size()) {
-            return "";
-        }
-        return labels.get(currentIndex);
+        if (!running) return "";
+        int index = plan.index();
+        if (index < 0 || index >= labels.size()) return "";
+        return labels.get(index);
     }
 
     public synchronized int getCurrentIndex() {
-        return currentIndex;
+        return plan.index();
     }
 
     public synchronized int getTotalCount() {
-        return queue.size();
+        return plan.size();
     }
 
     public synchronized int getSuccessCount() {
-        return successCount;
+        return plan.successes();
     }
 
     public synchronized int getSkippedCount() {
-        return skippedCount;
+        return plan.skipped();
     }
 
     public synchronized int getFailedCount() {
-        return failedCount;
+        return plan.failures();
     }
 
     public synchronized String getStatusMessage() {
@@ -268,8 +254,8 @@ public class AutomationEngine {
         running = false;
         mode = MODE_NONE;
         setStepInternal(STEP_IDLE);
-        lastSummary = "Aborted after " + (successCount + skippedCount + failedCount)
-                + " of " + queue.size() + " apps: " + reason;
+        lastSummary = "Aborted after " + plan.processed() + " of " + plan.size()
+                + " apps: " + reason;
         statusMessage = lastSummary;
         cancelNotification();
         AnneAccessibilityService svc = AnneAccessibilityService.getInstance();
@@ -281,21 +267,14 @@ public class AutomationEngine {
         if (!running) return;
         handler.removeCallbacksAndMessages(null);
 
-        if (outcome == OUTCOME_SUCCESS) {
-            successCount++;
-        } else if (outcome == OUTCOME_SKIPPED) {
-            skippedCount++;
-        } else {
-            failedCount++;
-        }
-        currentIndex++;
+        plan.completeCurrent(outcome);
 
-        // Leave the current App info page behind so the next intent cannot open
-        // on top of a stale screen (an earlier version just navigated away).
+        // Leave the current App info page behind so the next intent cannot open on
+        // top of a stale screen (an earlier version just navigated away).
         AnneAccessibilityService svc = AnneAccessibilityService.getInstance();
         if (svc != null) svc.pressBack();
 
-        if (currentIndex >= queue.size()) {
+        if (plan.finished()) {
             finishRun();
             return;
         }
@@ -317,8 +296,7 @@ public class AutomationEngine {
         running = false;
         mode = MODE_NONE;
         setStepInternal(STEP_IDLE);
-        lastSummary = "Done: " + successCount + " succeeded, " + skippedCount
-                + " skipped, " + failedCount + " failed of " + queue.size() + " apps.";
+        lastSummary = plan.summary();
         statusMessage = lastSummary;
         cancelNotification();
         returnToApp();
@@ -327,12 +305,16 @@ public class AutomationEngine {
     private void openCurrentPackageSettings(int gen) {
         String pkg;
         synchronized (this) {
-            if (!running || appContext == null || gen != generation || currentIndex >= queue.size()) {
+            if (!running || appContext == null || gen != generation) {
                 return;
             }
-            pkg = queue.get(currentIndex);
-            String label = currentIndex < labels.size() ? labels.get(currentIndex) : pkg;
-            statusMessage = "Processing (" + (currentIndex + 1) + "/" + queue.size() + "): " + label;
+            pkg = plan.current();
+            if (pkg == null) {
+                return;
+            }
+            String label = getExpectedLabel();
+            if (label.length() == 0) label = pkg;
+            statusMessage = "Processing (" + (plan.index() + 1) + "/" + plan.size() + "): " + label;
             setStepInternal(STEP_WAIT_APP_INFO);
             handler.removeCallbacks(timeoutRunnable);
             handler.postDelayed(timeoutRunnable, TIMEOUT_FIRST_PAGE_MS);
@@ -407,9 +389,9 @@ public class AutomationEngine {
                             Icon.createWithResource(appContext, android.R.drawable.ic_menu_close_clear_cancel),
                             "STOP", stopPi).build());
 
-            int total = queue.size();
-            if (total > 0 && currentIndex < total) {
-                b.setProgress(total, currentIndex, false);
+            int total = plan.size();
+            if (total > 0 && plan.index() < total) {
+                b.setProgress(total, plan.index(), false);
             }
             nm.notify(NOTIFICATION_ID, b.build());
         } catch (Exception ignored) {

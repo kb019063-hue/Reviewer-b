@@ -7,3 +7,4 @@ build/
 *.b64
 keystore/
 __pycache__/
+node_modules/

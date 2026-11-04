@@ -17,6 +17,7 @@ public class MainActivity extends Activity {
     private static final String JS_RESUME = "window.onAnneResume && window.onAnneResume();";
 
     private WebView webView;
+    private SystemBridge bridge;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -42,7 +43,8 @@ public class MainActivity extends Activity {
 
         webView.setWebViewClient(new WebViewClient());
         webView.setWebChromeClient(new WebChromeClient());
-        webView.addJavascriptInterface(new SystemBridge(this, webView), "AnneNative");
+        bridge = new SystemBridge(this, webView);
+        webView.addJavascriptInterface(bridge, "AnneNative");
 
         setContentView(webView);
 
@@ -88,6 +90,10 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        if (bridge != null) {
+            bridge.shutdown();   // stops the background cache scanner
+            bridge = null;
+        }
         if (webView != null) {
             try {
                 webView.removeJavascriptInterface("AnneNative");

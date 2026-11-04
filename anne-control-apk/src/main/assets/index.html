@@ -869,16 +869,36 @@
   }
 
   /* ---------------------------------------------------------------- bloatware */
+  /* The catalog is built from per-package StorageStats queries, which now run on a
+     background thread in the bridge; the result arrives via window.onBloatScan. */
   function loadBloatList(force) {
     if (!hasNative) return;
-    try {
-      if (force) window.AnneNative.invalidateScanCaches();
-      bloatItems = JSON.parse(window.AnneNative.getHuaweiBloatListJson());
-      renderBloatList();
-    } catch (e) {
-      showBanner("Could not read the bloat list: " + e);
+    if (force) window.AnneNative.invalidateScanCaches();
+    var box = document.getElementById("bloatContainer");
+    if (box && !bloatItems.length) {
+      box.innerHTML = "";
+      box.appendChild(cardWithText("Reading installed apps…"));
     }
+    window.AnneNative.scanBloatListAsync();
   }
+
+  /* Programmatic callers (the Auto-* buttons) need the data synchronously. By then
+     the async read above has almost always warmed the bridge's cache, so this is
+     cheap; if it is cold it is one blocking call the user explicitly asked for. */
+  function ensureBloatItems() {
+    if (bloatItems.length) return true;
+    try {
+      bloatItems = JSON.parse(window.AnneNative.getHuaweiBloatListJson());
+    } catch (e) {
+      bloatItems = [];
+    }
+    return bloatItems.length > 0;
+  }
+
+  window.onBloatScan = function(items) {
+    bloatItems = items || [];
+    renderBloatList();
+  };
 
   function setBloatFilter(tier) {
     bloatFilter = tier;
@@ -963,13 +983,7 @@
   }
 
   /* -------------------------------------------------------------- cache tab */
-  function fetchCacheList() {
-    try {
-      return JSON.parse(window.AnneNative.getTopCacheAppsJson());
-    } catch (e) {
-      return null;
-    }
-  }
+  var pendingAutoClean = false;
 
   function loadCacheList() {
     var box = document.getElementById("cacheListContainer");
@@ -979,14 +993,32 @@
       box.appendChild(cardWithText("Preview mode — install the APK to scan real cache sizes."));
       return;
     }
-    // Paint the busy state first: the bridge call blocks the JS thread for a
-    // few seconds on a P20 Lite while it queries every package.
-    box.appendChild(cardWithText("Scanning app caches… this takes a few seconds."));
-    setTimeout(function() {
-      var res = fetchCacheList();
-      renderCacheList(res);
-    }, 40);
+    box.appendChild(cardWithText("Scanning app caches…"));
+    window.AnneNative.scanCachesAsync();
   }
+
+  window.onScanProgress = function(kind, done, total) {
+    if (kind !== "cache") return;
+    var box = document.getElementById("cacheListContainer");
+    var card = box && box.firstElementChild;
+    var line = card && card.firstElementChild;
+    if (line) line.textContent = "Scanning app caches… " + done + " of " + total + " apps";
+  };
+
+  window.onCacheScan = function(res) {
+    renderCacheList(res);
+    if (!pendingAutoClean) return;
+    pendingAutoClean = false;
+    if (!cacheItems.length) {
+      openPerm("usage");
+      return;
+    }
+    var pkgs = [];
+    for (var i = 0; i < Math.min(15, cacheItems.length); i++) {
+      pkgs.push(cacheItems[i].pkg);
+    }
+    startAutomation("clear_cache", pkgs);
+  };
 
   function renderCacheList(res) {
     var permCard = document.getElementById("cacheNeedPermCard");
@@ -1008,7 +1040,8 @@
     if (permCard) permCard.classList.add("hidden");
 
     cacheItems = res.items || [];
-    setText("totalCacheHeader", "Reclaimable Cache: " + res.totalCacheMb + " MB");
+    setText("totalCacheHeader", "Reclaimable Cache: " + res.totalCacheMb + " MB ("
+      + (res.scannedApps || 0) + " apps scanned)");
 
     if (!cacheItems.length) {
       box.appendChild(cardWithText("App caches are already tiny (under 2 MB each)."));
@@ -1048,21 +1081,10 @@
       showBanner("Preview mode — install the APK on your P20 Lite.");
       return;
     }
+    pendingAutoClean = true;
+    window.AnneNative.invalidateScanCaches();
     showBanner("Scanning caches…");
-    setTimeout(function() {
-      window.AnneNative.invalidateScanCaches();
-      var res = fetchCacheList();
-      renderCacheList(res);
-      if (!cacheItems.length) {
-        openPerm("usage");
-        return;
-      }
-      var pkgs = [];
-      for (var i = 0; i < Math.min(15, cacheItems.length); i++) {
-        pkgs.push(cacheItems[i].pkg);
-      }
-      startAutomation("clear_cache", pkgs);
-    }, 40);
+    loadCacheList();
   }
 
   /* ------------------------------------------------------------ automation */
@@ -1102,7 +1124,10 @@
       showBanner("Preview mode — install the APK on your P20 Lite.");
       return;
     }
-    if (!bloatItems.length) loadBloatList(false);
+    if (!ensureBloatItems()) {
+      showBanner("Still reading the installed app list — try again in a moment.");
+      return;
+    }
     var pkgs = [];
     for (var i = 0; i < bloatItems.length; i++) {
       if (bloatItems[i].tier === "safe" && bloatItems[i].state === "active") {

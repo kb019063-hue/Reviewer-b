@@ -5,8 +5,11 @@ import android.os.SystemClock;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Clicks through App info / Storage / confirm dialogs in Settings.
@@ -30,6 +33,8 @@ public class AnneAccessibilityService extends AccessibilityService {
     private static final long MISMATCH_BURST_MS = 1500L;
     /** Consecutive unverifiable packages before the whole run is aborted. */
     private static final int MAX_UNVERIFIED_PACKAGES = 3;
+    /** Bound on nodes created by a single tree walk, so a pathological tree cannot stall us. */
+    private static final int MAX_NODES = 900;
     /** Grace period after a step starts, while the Settings page is still rendering. */
     private static final long VERIFY_GRACE_MS = 1800L;
 
@@ -198,12 +203,10 @@ public class AnneAccessibilityService extends AccessibilityService {
             return false;
         }
         String expectedLabel = engine.getExpectedLabel();
-        if (expectedLabel != null && expectedLabel.length() > 0
-                && !expectedLabel.equals(expectedPkg)
-                && windowHasExactText(root, expectedLabel)) {
-            return true;
+        if (expectedLabel != null && expectedLabel.length() > 0 && !expectedLabel.equals(expectedPkg)) {
+            return windowHasExactText(root, new String[] { expectedLabel, expectedPkg });
         }
-        return windowHasExactText(root, expectedPkg);
+        return windowHasExactText(root, new String[] { expectedPkg });
     }
 
     /**
@@ -245,24 +248,70 @@ public class AnneAccessibilityService extends AccessibilityService {
         unverifiedPackages = 0;
     }
 
-    private boolean windowHasExactText(AccessibilityNodeInfo root, String target) {
-        String want = normalize(target);
-        if (want.length() == 0) return false;
-        List<AccessibilityNodeInfo> hits = root.findAccessibilityNodeInfosByText(target);
-        if (hits == null) return false;
+    /**
+     * True when any of {@code candidates} appears on screen as exact (normalised)
+     * text or content description. One tree walk for all candidates, instead of one
+     * native subtree search per candidate.
+     */
+    private boolean windowHasExactText(AccessibilityNodeInfo root, String[] candidates) {
+        final Set<String> wanted = new HashSet<String>();
+        for (int i = 0; i < candidates.length; i++) {
+            String n = normalize(candidates[i]);
+            if (n.length() > 0) wanted.add(n);
+        }
+        if (wanted.isEmpty()) return false;
+
+        final boolean[] found = new boolean[] { false };
+        scanTree(root, new NodeVisitor() {
+            @Override
+            public boolean visit(AccessibilityNodeInfo node) {
+                CharSequence text = node.getText();
+                if (text != null && wanted.contains(normalize(text.toString()))) {
+                    found[0] = true;
+                    return true;
+                }
+                CharSequence desc = node.getContentDescription();
+                if (desc != null && wanted.contains(normalize(desc.toString()))) {
+                    found[0] = true;
+                    return true;
+                }
+                return false;
+            }
+        });
+        return found[0];
+    }
+
+    /** Visitor for {@link #scanTree}; return true to stop the walk early. */
+    private interface NodeVisitor {
+        boolean visit(AccessibilityNodeInfo node);
+    }
+
+    /**
+     * Breadth-first walk of the active window.
+     *
+     * The window is walked once regardless of how many labels we are looking for,
+     * and the walk is bounded so a pathological tree cannot stall the service. All
+     * nodes created by the walk are recycled before returning, so a visitor may not
+     * retain a node reference past its own visit() call.
+     */
+    private void scanTree(AccessibilityNodeInfo root, NodeVisitor visitor) {
+        if (root == null) return;
+        List<AccessibilityNodeInfo> queue = new ArrayList<AccessibilityNodeInfo>();
+        queue.add(AccessibilityNodeInfo.obtain(root));
+        int head = 0;
         try {
-            for (int i = 0; i < hits.size(); i++) {
-                AccessibilityNodeInfo n = hits.get(i);
-                if (n == null) continue;
-                CharSequence text = n.getText();
-                if (text != null && normalize(text.toString()).equals(want)) return true;
-                CharSequence desc = n.getContentDescription();
-                if (desc != null && normalize(desc.toString()).equals(want)) return true;
+            while (head < queue.size() && head < MAX_NODES) {
+                AccessibilityNodeInfo node = queue.get(head++);
+                if (visitor.visit(node)) return;
+                int childCount = node.getChildCount();
+                for (int i = 0; i < childCount && queue.size() < MAX_NODES; i++) {
+                    AccessibilityNodeInfo child = node.getChild(i);
+                    if (child != null) queue.add(child);
+                }
             }
         } finally {
-            recycleAll(hits);
+            recycleAll(queue);
         }
-        return false;
     }
 
     private String normalize(String s) {
@@ -422,32 +471,62 @@ public class AnneAccessibilityService extends AccessibilityService {
                 || lower.contains("reset");
     }
 
-    private AccessibilityNodeInfo findClickableByLabels(AccessibilityNodeInfo root, String[] targets, boolean exactMatch) {
-        for (int i = 0; i < targets.length; i++) {
-            List<AccessibilityNodeInfo> list = root.findAccessibilityNodeInfosByText(targets[i]);
-            if (list == null) continue;
-            try {
-                for (int j = 0; j < list.size(); j++) {
-                    AccessibilityNodeInfo node = list.get(j);
-                    if (node == null || node.getText() == null) continue;
-                    String text = node.getText().toString().trim().toLowerCase(Locale.US);
-                    if (isForbiddenLabel(text)) continue;
+    /**
+     * First clickable node whose text (or content description) matches one of
+     * {@code targets}, preferring earlier entries in the array.
+     *
+     * This walks the window once and scores matches by label priority. The previous
+     * implementation called findAccessibilityNodeInfosByText() per alias, i.e. up to
+     * nine full native subtree searches per accessibility event - expensive enough to
+     * jank the very Settings screen it was driving.
+     *
+     * Caller is responsible for recycling the returned node.
+     */
+    private AccessibilityNodeInfo findClickableByLabels(AccessibilityNodeInfo root, final String[] targets, final boolean exactMatch) {
+        final AccessibilityNodeInfo[] best = new AccessibilityNodeInfo[] { null };
+        final int[] bestIndex = new int[] { Integer.MAX_VALUE };
 
-                    boolean match = exactMatch
-                            ? text.equals(targets[i])
-                            : (text.equals(targets[i]) || text.startsWith(targets[i]));
-                    if (match) {
-                        AccessibilityNodeInfo clickable = resolveClickableParent(node);
-                        if (clickable != null) {
-                            return clickable; // caller responsible for recycling
-                        }
-                    }
-                }
-            } finally {
-                recycleAll(list);
+        scanTree(root, new NodeVisitor() {
+            @Override
+            public boolean visit(AccessibilityNodeInfo node) {
+                int index = matchIndex(node, targets, exactMatch);
+                if (index < 0 || index >= bestIndex[0]) return false;
+
+                AccessibilityNodeInfo clickable = resolveClickableParent(node);
+                if (clickable == null) return false;
+
+                if (best[0] != null) best[0].recycle();
+                best[0] = clickable;
+                bestIndex[0] = index;
+                return index == 0; // highest-priority alias already found
+            }
+        });
+        return best[0];
+    }
+
+    private int matchIndex(AccessibilityNodeInfo node, String[] targets, boolean exactMatch) {
+        String text = lower(node.getText());
+        String desc = lower(node.getContentDescription());
+        for (int i = 0; i < targets.length; i++) {
+            if (matchesLabel(text, targets[i], exactMatch)
+                    || matchesLabel(desc, targets[i], exactMatch)) {
+                return i;
             }
         }
-        return null;
+        return -1;
+    }
+
+    private String lower(CharSequence cs) {
+        if (cs == null) return null;
+        String s = cs.toString().trim().toLowerCase(Locale.US);
+        return s.length() == 0 ? null : s;
+    }
+
+    private boolean matchesLabel(String value, String target, boolean exactMatch) {
+        if (value == null) return false;
+        if (isForbiddenLabel(value)) return false;
+        if (value.equals(target)) return true;
+        return !exactMatch && value.startsWith(target);
     }
 
     /**

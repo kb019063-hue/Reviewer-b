@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">AnneControl: limpeza automática e assistente anti-bloatware</string>
+    <string name="accessibility_service_desc">Permite que o AnneControl toque automaticamente em «Forçar parada», «Desativar» ou «Limpar cache» nos aplicativos pré-instalados do Huawei EMUI 9.1 e nos que acumulam cache, para não precisar percorrer dezenas de menus à mão. Nunca acessa dados pessoais e funciona 100 % offline.</string>
+</resources>

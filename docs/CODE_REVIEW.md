@@ -493,16 +493,30 @@ Implemented in 1.0.2 (`versionCode 102`):
 | 2.1 Fabricated sweep metrics | ✅ Fixed | Reports `requestedCount` + real measured delta (may be 0/negative); preview banner no longer invents "24" |
 | 2.2 Global app killer with a hidden messaging denylist | ✅ Fixed | User-controlled Keep Alive list (empty by default), sweep scope toggle, curated sweep limited to the `safe` tier; `isImportantMessagingApp()` deleted — WhatsApp is killable, as requested |
 | 2.3 `innerHTML` injection from app labels | ✅ Fixed | All list rendering rebuilt with `textContent` + `addEventListener`; verified by executing the real page under jsdom with a hostile app label |
-| 2.4 Blocking cache scan, no feedback | ◐ Improved | System packages skipped, results memoised for 25 s with `invalidateScanCaches()`, "Scanning…" paint before the blocking read. Full async callback still open |
+| 2.4 Blocking cache scan, no feedback | ✅ Fixed | Scan now runs on a background executor (`scanCachesAsync`/`scanBloatListAsync`) and streams `window.onScanProgress` ("Scanning… 8 of 150 apps") before calling back with `window.onCacheScan`. System packages skipped, results memoised for 25 s; the blocking bridge call is no longer on the UI path |
 | 2.5 `totalCacheMb` under-count | ✅ Fixed | Total now accumulates every scanned app; list still gated at 2 MB |
 | 2.6 Timeouts posing as success | ◐ Mostly fixed | `SUCCESS`/`SKIPPED`/`FAILED` outcomes with separate counters; BACK is pressed before navigating; the summary reports the breakdown instead of one number. Still open: a successful `ACTION_CLICK` is counted as success even when the ROM does not show a confirmation dialog |
 | 3.1 Ignored `startAutomation` result | ✅ Fixed | `startAutomation()` JSON is parsed; "nothing was started" is shown when the service is not running |
 | 3.2 `start()` mid-run skipping a package | ✅ Fixed | `generation` token invalidates callbacks from a previous run |
 | 3.3 Confirm labels overlapping action labels | ✅ Fixed | `android:id/button1` → neutral wording → mode-specific wording, in that order; action labels removed from the neutral list |
-| 3.4 Tree walked once per label per event | ◐ Improved | `notificationTimeout` 120 → 260 ms, early return on `STEP_IDLE`, `packageNames` filter dropped. Single-pass traversal still open |
+| 3.4 Tree walked once per label per event | ✅ Fixed | One bounded breadth-first walk per query (`scanTree`, 900-node cap) replaces one native subtree search per alias; content descriptions are matched too. `notificationTimeout` 120 → 260 ms, early return on `STEP_IDLE`, `packageNames` filter dropped. Per event: ~2 walks instead of up to 10 |
 | 3.5 Dead permissions / misleading ADB claim | ✅ Fixed | `WRITE_SECURE_SETTINGS` + `GET_PACKAGE_SIZE` removed from the manifest, Power-tab command now the real `appops` grant, `allowBackup="false"` |
 | 3.6 CI hygiene | ✅ Fixed | `concurrency` group, release published only from `main`, version-aware tool sorting, friendly SDK errors, `-Xlint:all,-options` warnings printed |
 | 3.7 `minSdk 24` vs `StorageStatsManager` | ✅ Fixed | `minSdkVersion` 26 in manifest and build script |
 | §4 Low/polish (banner timer, stuck button, stale `cacheItems`, NaN clamp, `putFloat` result, zoom, backdrop blur, unquoted attribute) | ✅ Fixed | See `index.html`, `SystemBridge.setCompactFontScale` |
-| §6 No tests | ◐ Partial | The WebView UI is now exercised by a jsdom harness (32 assertions: injection safety, honest reporting, keep-alive persistence, failure surfacing). Still no JVM unit tests for the automation queue |
-| §4 Localisation, single-pass node matching, async cache scan, debounced search | ⬜ Open | Not addressed in this pass |
+| §6 No tests | ✅ Fixed | `QueuePlanner` extraction (no Android imports) with plain-JVM tests in `test/java/`, executed by `ci_build.py` before the APK is built — a failing assertion fails the build. The WebView page is covered by `test/ui/` (jsdom, 41 assertions: injection safety, honest reporting, keep-alive persistence, async progress, failure surfacing, both cancel paths), run as its own CI step |
+| §4 Localisation | ◐ Partial | The strings users see in Android's own UI (app name, accessibility service label + consent description) are now translated into DE/ES/FR/PT under `res/values-*/`. The WebView UI itself is still English-only — a full HTML translation is the remaining piece |
+| §4 Debounced bloat search, single-pass verification text search | ⬜ Open | Search still re-renders on every keystroke (now with a DocumentFragment, so it is cheap); verification still uses one normalised text walk per event, which is already bounded |
+
+
+---
+
+## 9. Second pass (same branch)
+
+Additional work after the first fix round:
+
+* **Async cache scan with progress** — `scanCachesAsync()` / `scanBloatListAsync()` run on a single-thread executor; progress and results come back through `window.onScanProgress` / `window.onCacheScan` / `window.onBloatScan`. The `@JavascriptInterface` blocking path is kept only for the explicit Auto-Clean button, which now also goes through the scan callback via a `pendingAutoClean` flag.
+* **Single-pass accessibility traversal** — `scanTree()` + `NodeVisitor`, bounded to 900 nodes, replacing per-alias native searches.
+* **`QueuePlanner`** — queue filtering, ordering, outcome counters and summary text moved out of `AutomationEngine` into a pure-Java class, covered by `test/java/.../QueuePlannerTest.java` (22 assertions) that `ci_build.py` compiles and runs on a plain JVM before building. The engine now delegates, so `start()`/`advance`-related regressions (duplicates, protected-package filtering, overrun past the queue, unknown outcomes) are caught without a device.
+* **UI regression suite** — `test/ui/ui_test.js` runs the real `index.html` under jsdom against a stub bridge; `test/ui/package.json` pins jsdom. Wired in as its own workflow step.
+* **Localisation** — `res/values-de|es|fr|pt/strings.xml` for the accessibility service label and consent description (what a non-English user reads before granting the permission).

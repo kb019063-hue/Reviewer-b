@@ -61,6 +61,21 @@ push, and publishes it to the `latest-apk` GitHub Release **only from `main`**.
 
 ---
 
+## Tests
+
+Two suites run in CI (`.github/workflows/build-annecontrol-apk.yml`):
+
+```bash
+# Pure-logic tests for the automation queue, on a plain JVM (no device, no SDK).
+# ci_build.py runs these first and aborts the APK build if they fail.
+javac -d /tmp/t anne-control-apk/src/main/java/com/annecontrol/p20lite/{HuaweiCatalog,QueuePlanner}.java \
+      anne-control-apk/test/java/com/annecontrol/p20lite/QueuePlannerTest.java
+java -cp /tmp/t com.annecontrol.p20lite.QueuePlannerTest
+
+# WebView UI tests: the real index.html under jsdom with a stub AnneNative bridge.
+cd test/ui && npm install && node ui_test.js
+```
+
 ## How the cleanup behaves
 
 * **Sweep scope** — "Bloat + all apps" (default) or "Curated bloat only". Change it on the

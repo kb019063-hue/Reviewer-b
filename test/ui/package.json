@@ -1,0 +1,12 @@
+{
+  "name": "annecontrol-ui-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "jsdom regression tests for the AnneControl WebView UI",
+  "scripts": {
+    "test": "node ui_test.js"
+  },
+  "dependencies": {
+    "jsdom": "^30.1.0"
+  }
+}
