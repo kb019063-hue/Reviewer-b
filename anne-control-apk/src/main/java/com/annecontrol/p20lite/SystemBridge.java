@@ -36,7 +36,11 @@ import java.io.FileReader;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class SystemBridge {
 
@@ -44,10 +48,19 @@ public class SystemBridge {
     private final Activity activity;
     private final WebView webView;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final ExecutorService scanExecutor = Executors.newSingleThreadExecutor();
 
     // Battery status caching to eliminate redundant IPC calls
     private long lastBatteryFetchTime = 0L;
     private JSONObject cachedBattery = null;
+
+    // Memoised StorageStats scans; see invalidateScanCaches()
+    private static final long SCAN_CACHE_MS = 25000L;
+    private long lastBloatScanTime = 0L;
+    private long lastCacheScanTime = 0L;
+    private String cachedBloatJson = null;
+    private String cachedCacheJson = null;
+    private boolean cachedBloatStatsState = false;
 
     public SystemBridge(Activity activity, WebView webView) {
         this.activity = activity;
@@ -78,10 +91,21 @@ public class SystemBridge {
         }
     }
 
+    /**
+     * True only when the service is actually bound right now.
+     *
+     * The old implementation also accepted "our package is listed in
+     * ENABLED_ACCESSIBILITY_SERVICES". That is a persisted preference: EMUI's own
+     * battery manager routinely kills the service while the preference still lists
+     * it, so the app would start a run that could never click anything, and the
+     * user could not reach the in-app cancel because Settings was on top.
+     */
     public boolean hasAccessibilityEnabled() {
-        if (AnneAccessibilityService.isServiceConnected()) {
-            return true;
-        }
+        return AnneAccessibilityService.isServiceConnected();
+    }
+
+    /** Whether the user has flipped the Accessibility switch at all (diagnostics only). */
+    public boolean isAccessibilityListedInSettings() {
         try {
             String enabled = Settings.Secure.getString(
                     ctx.getContentResolver(),
@@ -120,6 +144,9 @@ public class SystemBridge {
             JSONObject perms = new JSONObject();
             perms.put("usageAccess", hasUsageAccess());
             perms.put("accessibility", hasAccessibilityEnabled());
+            // Switched on in Settings but not currently bound (EMUI killed it).
+            perms.put("accessibilityStale",
+                    !hasAccessibilityEnabled() && isAccessibilityListedInSettings());
             perms.put("writeSettings", hasWriteSettings());
             perms.put("batteryExemption", hasBatteryExemption());
             root.put("permissions", perms);
@@ -251,6 +278,20 @@ public class SystemBridge {
         return bat;
     }
 
+    /**
+     * Stops background processes and reports what was actually requested.
+     *
+     * Policy, persisted in {@link Prefs}:
+     *  - "bloat" scope: only catalog entries of the "safe" tier.
+     *  - "bloat+apps" scope (default): the above, plus every installed third-party app.
+     *  - the user's Keep Alive list is always skipped, as are the catalog's
+     *    protected tier, this app, Settings, SystemUI and "android".
+     *
+     * There is deliberately no hardcoded "important app" exception list any more.
+     * WhatsApp, Telegram and friends keep a network connection and keep receiving
+     * messages after being swiped out of Recents, which is exactly the drain the
+     * user is trying to stop - so what may keep running is the user's decision.
+     */
     @JavascriptInterface
     public String sweepBackgroundRamJson() {
         try {
@@ -262,54 +303,193 @@ public class SystemBridge {
             ActivityManager.MemoryInfo before = new ActivityManager.MemoryInfo();
             am.getMemoryInfo(before);
 
+            boolean includeAllApps = Prefs.sweepAllApps(ctx);
+            Set<String> keepAlive = Prefs.keepAlive(ctx);
             PackageManager pm = ctx.getPackageManager();
-            List<ApplicationInfo> apps = pm.getInstalledApplications(0);
-            int swept = 0;
+            Set<String> targets = new LinkedHashSet<String>();
 
-            // First sweep known Huawei bloatware & background daemons
+            // 1) Curated bloat: safe tier only, and only what is really installed.
             for (int i = 0; i < HuaweiCatalog.ENTRIES.length; i++) {
                 HuaweiCatalog.BloatEntry entry = HuaweiCatalog.ENTRIES[i];
-                if (!"protected".equals(entry.tier)) {
-                    am.killBackgroundProcesses(entry.pkg);
-                    swept++;
+                if (!"safe".equals(entry.tier)) continue;
+                if (keepAlive.contains(entry.pkg)) continue;
+                if (HuaweiCatalog.isProtected(entry.pkg)) continue;
+                if (!isInstalled(pm, entry.pkg)) continue;
+                targets.add(entry.pkg);
+            }
+
+            // 2) Optionally every other third-party app.
+            if (includeAllApps) {
+                List<ApplicationInfo> apps = pm.getInstalledApplications(0);
+                for (int i = 0; i < apps.size(); i++) {
+                    ApplicationInfo ai = apps.get(i);
+                    if (ai == null || ai.packageName == null) continue;
+                    String p = ai.packageName;
+                    if (p.equals(ctx.getPackageName())) continue;
+                    if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
+                    if (HuaweiCatalog.isProtected(p)) continue;
+                    if (keepAlive.contains(p)) continue;
+                    targets.add(p);
                 }
             }
 
-            // Also sweep non-essential idle third-party background processes
-            if (apps != null) {
-                for (int i = 0; i < apps.size(); i++) {
-                    ApplicationInfo ai = apps.get(i);
-                    String p = ai.packageName;
-                    if (p == null || p.equals(ctx.getPackageName())) continue;
-                    if (isImportantMessagingApp(p) || HuaweiCatalog.isProtected(p)) continue;
-                    if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
-                        am.killBackgroundProcesses(p);
-                        swept++;
-                    }
-                }
+            int requested = 0;
+            for (String pkg : targets) {
+                am.killBackgroundProcesses(pkg);
+                requested++;
+            }
+
+            // Give AMS a moment to reap the processes before sampling free memory.
+            // This runs on the WebView bridge thread (not the UI thread) and the
+            // button shows a busy state while it happens.
+            try {
+                Thread.sleep(300L);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
             }
 
             ActivityManager.MemoryInfo after = new ActivityManager.MemoryInfo();
             am.getMemoryInfo(after);
-            long freedMb = Math.max(16L, (after.availMem - before.availMem) / 1048576L);
-            long newAvailMb = after.availMem / 1048576L;
+
+            // Report the real delta, which may legitimately be 0 or negative. The
+            // previous version floored this at 16 MB, so the banner always claimed
+            // memory had been freed even when none had.
+            long deltaMb = (after.availMem - before.availMem) / 1048576L;
 
             JSONObject res = new JSONObject();
             res.put("ok", true);
-            res.put("sweptCount", swept);
-            res.put("freedMb", freedMb);
-            res.put("availMb", newAvailMb);
+            res.put("requestedCount", requested);
+            res.put("freedMb", deltaMb);
+            res.put("availMb", after.availMem / 1048576L);
+            res.put("scope", includeAllApps ? "bloat+apps" : "bloat");
             return res.toString();
         } catch (Exception e) {
             return "{\"ok\":false,\"message\":\"" + safeJson(e.getMessage()) + "\"}";
         }
     }
 
+    private boolean isInstalled(PackageManager pm, String pkg) {
+        try {
+            pm.getApplicationInfo(pkg, 0);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * Everything the user can put on the Keep Alive list, plus the current sweep
+     * scope. Curated (catalog) packages come first, then installed third-party apps
+     * alphabetically by label.
+     */
     @JavascriptInterface
-    public String getHuaweiBloatListJson() {
+    public String getKeepAliveJson() {
         try {
             PackageManager pm = ctx.getPackageManager();
+            Set<String> keepAlive = Prefs.keepAlive(ctx);
+            List<ApplicationInfo> apps = pm.getInstalledApplications(0);
+
+            JSONArray curated = new JSONArray();
+            Set<String> seen = new LinkedHashSet<String>();
+            for (int i = 0; i < HuaweiCatalog.ENTRIES.length; i++) {
+                HuaweiCatalog.BloatEntry e = HuaweiCatalog.ENTRIES[i];
+                if ("protected".equals(e.tier)) continue;
+                if (!isInstalled(pm, e.pkg)) continue;
+                seen.add(e.pkg);
+                curated.put(keepAliveItem(e.pkg, e.title, keepAlive.contains(e.pkg), true));
+            }
+
+            // {label, package} pairs; resolving each label exactly once instead of
+            // once per Comparison during the sort.
+            List<String[]> userApps = new ArrayList<String[]>();
+            for (int i = 0; i < apps.size(); i++) {
+                ApplicationInfo ai = apps.get(i);
+                if (ai == null || ai.packageName == null) continue;
+                if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
+                if (ai.packageName.equals(ctx.getPackageName())) continue;
+                if (seen.contains(ai.packageName)) continue;
+                userApps.add(new String[] { labelOf(ai), ai.packageName });
+            }
+            Collections.sort(userApps, new Comparator<String[]>() {
+                @Override
+                public int compare(String[] a, String[] b) {
+                    return a[0].compareToIgnoreCase(b[0]);
+                }
+            });
+
+            JSONArray others = new JSONArray();
+            for (int i = 0; i < userApps.size(); i++) {
+                String[] pair = userApps.get(i);
+                others.put(keepAliveItem(pair[1], pair[0], keepAlive.contains(pair[1]), false));
+            }
+
+            JSONObject out = new JSONObject();
+            out.put("sweepAllApps", Prefs.sweepAllApps(ctx));
+            out.put("curated", curated);
+            out.put("others", others);
+            return out.toString();
+        } catch (Exception e) {
+            return "{\"sweepAllApps\":true,\"curated\":[],\"others\":[]}";
+        }
+    }
+
+    private JSONObject keepAliveItem(String pkg, String label, boolean kept, boolean curated) throws Exception {
+        JSONObject o = new JSONObject();
+        o.put("pkg", pkg);
+        o.put("label", label);
+        o.put("kept", kept);
+        o.put("curated", curated);
+        return o;
+    }
+
+    private String labelOf(ApplicationInfo ai) {
+        try {
+            CharSequence cs = ctx.getPackageManager().getApplicationLabel(ai);
+            if (cs != null && cs.length() > 0) return cs.toString();
+        } catch (Exception ignored) {
+        }
+        return ai.packageName;
+    }
+
+    @JavascriptInterface
+    public boolean setKeepAlive(String pkg, boolean kept) {
+        try {
+            Prefs.setKept(ctx, pkg, kept);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @JavascriptInterface
+    public boolean setSweepAllApps(boolean all) {
+        try {
+            Prefs.setSweepAllApps(ctx, all);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @JavascriptInterface
+    public String getHuaweiBloatListJson() {
+        return buildBloatListJson();
+    }
+
+    private String buildBloatListJson() {
+        try {
             boolean canReadStats = hasUsageAccess() && Build.VERSION.SDK_INT >= 26;
+            long now = System.currentTimeMillis();
+
+            // Per-package StorageStats queries are binder round-trips; this list is
+            // re-read on every tab switch and every refresh, so memoise it briefly.
+            if (cachedBloatJson != null
+                    && cachedBloatStatsState == canReadStats
+                    && now - lastBloatScanTime < SCAN_CACHE_MS) {
+                return cachedBloatJson;
+            }
+
+            PackageManager pm = ctx.getPackageManager();
             StorageStatsManager ssm = null;
             if (canReadStats) {
                 ssm = (StorageStatsManager) ctx.getSystemService(Context.STORAGE_STATS_SERVICE);
@@ -348,7 +528,10 @@ public class SystemBridge {
                 obj.put("cacheMb", cacheMb);
                 arr.put(obj);
             }
-            return arr.toString();
+            cachedBloatJson = arr.toString();
+            cachedBloatStatsState = canReadStats;
+            lastBloatScanTime = now;
+            return cachedBloatJson;
         } catch (Exception e) {
             return "[]";
         }
@@ -361,12 +544,26 @@ public class SystemBridge {
         long totalBytes;
     }
 
-    @JavascriptInterface
-    public String getTopCacheAppsJson() {
+    /**
+     * Cache sizes per app.
+     *
+     * Runs on the scan executor (see scanCachesAsync), never on the WebView thread:
+     * each queryStatsForPackage() is a binder round-trip, and the first version of
+     * this method spent seconds blocking the single-threaded JS bridge. System
+     * packages are skipped (they are most of the list and rarely what a user
+     * reclaims) and results are memoised so revisiting a tab is free.
+     */
+    private String buildCacheScanJson() {
         try {
             if (!hasUsageAccess() || Build.VERSION.SDK_INT < 26) {
+                cachedCacheJson = null;
                 return "{\"needsUsageAccess\":true,\"items\":[]}";
             }
+            long now = System.currentTimeMillis();
+            if (cachedCacheJson != null && now - lastCacheScanTime < SCAN_CACHE_MS) {
+                return cachedCacheJson;
+            }
+
             PackageManager pm = ctx.getPackageManager();
             StorageStatsManager ssm = (StorageStatsManager) ctx.getSystemService(Context.STORAGE_STATS_SERVICE);
             if (ssm == null) {
@@ -375,24 +572,40 @@ public class SystemBridge {
 
             List<ApplicationInfo> apps = pm.getInstalledApplications(0);
             List<CacheItem> items = new ArrayList<CacheItem>();
-            long totalCacheBytes = 0L;
+            long allCacheBytes = 0L;
+            int scanned = 0;
+
+            int totalCandidates = 0;
+            for (int i = 0; i < apps.size(); i++) {
+                ApplicationInfo ai = apps.get(i);
+                if (ai == null || ai.packageName == null) continue;
+                if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
+                totalCandidates++;
+            }
 
             for (int i = 0; i < apps.size(); i++) {
                 ApplicationInfo ai = apps.get(i);
                 if (ai == null || ai.packageName == null) continue;
+                if ((ai.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
                 try {
                     StorageStats st = ssm.queryStatsForPackage(
                             StorageManager.UUID_DEFAULT,
                             ai.packageName,
                             android.os.Process.myUserHandle()
                     );
+                    scanned++;
+                    if (scanned % 8 == 0) {
+                        postJs("window.onScanProgress && window.onScanProgress('cache',"
+                                + scanned + "," + totalCandidates + ")");
+                    }
                     long cb = st.getCacheBytes();
+                    // Total counts every scanned app, so the headline figure is not
+                    // silently limited to the apps large enough to list below.
+                    allCacheBytes += cb;
                     if (cb >= 2L * 1048576L) { // >= 2 MB cache
-                        totalCacheBytes += cb;
                         CacheItem ci = new CacheItem();
                         ci.pkg = ai.packageName;
-                        CharSequence cs = pm.getApplicationLabel(ai);
-                        ci.label = cs != null ? cs.toString() : ai.packageName;
+                        ci.label = labelOf(ai);
                         ci.cacheBytes = cb;
                         ci.totalBytes = st.getAppBytes() + st.getDataBytes();
                         items.add(ci);
@@ -404,9 +617,7 @@ public class SystemBridge {
             Collections.sort(items, new Comparator<CacheItem>() {
                 @Override
                 public int compare(CacheItem a, CacheItem b) {
-                    if (b.cacheBytes > a.cacheBytes) return 1;
-                    if (b.cacheBytes < a.cacheBytes) return -1;
-                    return 0;
+                    return Long.compare(b.cacheBytes, a.cacheBytes);
                 }
             });
 
@@ -424,20 +635,106 @@ public class SystemBridge {
 
             JSONObject out = new JSONObject();
             out.put("needsUsageAccess", false);
-            out.put("totalCacheMb", round1(totalCacheBytes / 1048576.0));
+            out.put("totalCacheMb", round1(allCacheBytes / 1048576.0));
+            out.put("scannedApps", scanned);
             out.put("items", arr);
-            return out.toString();
+            cachedCacheJson = out.toString();
+            lastCacheScanTime = now;
+            return cachedCacheJson;
         } catch (Exception e) {
             return "{\"needsUsageAccess\":false,\"totalCacheMb\":0,\"items\":[]}";
         }
     }
 
+    /** Drops memoised scan results so the next read reflects the current state. */
+    @JavascriptInterface
+    public void invalidateScanCaches() {
+        lastCacheScanTime = 0L;
+        lastBloatScanTime = 0L;
+        cachedCacheJson = null;
+        cachedBloatJson = null;
+    }
+
+    /** Runs a JS snippet on the WebView thread. Safe to call from the scan thread. */
+    private void postJs(final String js) {
+        mainHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                if (webView == null) return;
+                try {
+                    webView.evaluateJavascript(js, null);
+                } catch (Exception ignored) {
+                }
+            }
+        });
+    }
+
+    /**
+     * Scans caches off the JS thread and streams progress plus the result back to the
+     * page. The synchronous variant blocks the single-threaded WebView for seconds on
+     * a P20 Lite (~150 binder round-trips), which is what made this tab feel frozen.
+     */
+    @JavascriptInterface
+    public void scanCachesAsync() {
+        scanExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                String json;
+                try {
+                    json = buildCacheScanJson();
+                } catch (Exception e) {
+                    json = "{\"needsUsageAccess\":false,\"error\":true,\"items\":[]}";
+                }
+                postJs("window.onCacheScan && window.onCacheScan(" + json + ")");
+            }
+        });
+    }
+
+    /** Async variant of the bloat catalog read (29 StorageStats queries). */
+    @JavascriptInterface
+    public void scanBloatListAsync() {
+        scanExecutor.execute(new Runnable() {
+            @Override
+            public void run() {
+                String json;
+                try {
+                    json = buildBloatListJson();
+                } catch (Exception e) {
+                    json = "[]";
+                }
+                postJs("window.onBloatScan && window.onBloatScan(" + json + ")");
+            }
+        });
+    }
+
+    /** Called from MainActivity.onDestroy(). */
+    public void shutdown() {
+        try {
+            scanExecutor.shutdownNow();
+        } catch (Exception ignored) {
+        }
+    }
+
     @JavascriptInterface
     public String startAutomation(String mode, String csvPackages) {
+        if (!AutomationEngine.MODE_FORCE_STOP.equals(mode)
+                && !AutomationEngine.MODE_DISABLE.equals(mode)
+                && !AutomationEngine.MODE_CLEAR_CACHE.equals(mode)) {
+            return "{\"ok\":false,\"message\":\"Unsupported automation mode.\"}";
+        }
         if (!hasAccessibilityEnabled()) {
-            openPermissionScreen("accessibility");
-            showToast("Turn ON 'AnneControl Auto-Cleaner' in Accessibility first, then tap again!");
-            return "{\"ok\":false,\"needsAccessibility\":true}";
+            boolean listed = isAccessibilityListedInSettings();
+            if (listed) {
+                // The switch looks on but the service is not bound - EMUI's battery
+                // manager kills it routinely. Starting a run here would drive Settings
+                // with nothing clicking, and the user could not reach the in-app cancel.
+                showToast("The Accessibility service is switched on but not running (EMUI stops it). "
+                        + "Toggle it OFF and ON in Settings, then tap again.");
+            } else {
+                openPermissionScreen("accessibility");
+                showToast("Turn ON 'AnneControl Auto-Cleaner' in Accessibility first, then tap again!");
+            }
+            return "{\"ok\":false,\"needsAccessibility\":true,\"serviceListed\":" + listed + "}";
         }
         if (csvPackages == null || csvPackages.trim().isEmpty()) {
             return "{\"ok\":false,\"message\":\"No apps selected.\"}";
@@ -446,11 +743,13 @@ public class SystemBridge {
         List<String> list = new ArrayList<String>();
         for (int i = 0; i < parts.length; i++) {
             String p = parts[i].trim();
-            if (p.length() > 0) list.add(p);
+            if (p.length() > 0 && !list.contains(p)) list.add(p);
         }
 
         AutomationEngine.get().start(ctx, mode, list);
-        return "{\"ok\":true}";
+        AutomationEngine engine = AutomationEngine.get();
+        return "{\"ok\":true,\"queued\":" + engine.getTotalCount()
+                + ",\"running\":" + engine.isRunning() + "}";
     }
 
     @JavascriptInterface
@@ -467,12 +766,33 @@ public class SystemBridge {
             o.put("mode", eng.getMode());
             o.put("currentIndex", eng.getCurrentIndex());
             o.put("totalCount", eng.getTotalCount());
-            o.put("succeededCount", eng.getSucceededCount());
+            o.put("succeededCount", eng.getSuccessCount());
+            o.put("skippedCount", eng.getSkippedCount());
+            o.put("failedCount", eng.getFailedCount());
             o.put("currentPackage", eng.getCurrentPackage());
+            o.put("expectedLabel", eng.getExpectedLabel());
             o.put("message", eng.getStatusMessage());
             return o.toString();
         } catch (Exception e) {
             return "{\"running\":false}";
+        }
+    }
+
+    /**
+     * One-shot summary of the last finished run (completion, abort or cancel).
+     * Consuming it here is what stops the banner re-appearing on every resume.
+     */
+    @JavascriptInterface
+    public String consumeRunSummaryJson() {
+        try {
+            JSONObject o = new JSONObject();
+            String summary = AutomationEngine.get().consumeSummary();
+            o.put("available", summary != null);
+            o.put("message", summary != null ? summary : "");
+            o.put("running", AutomationEngine.get().isRunning());
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"available\":false,\"message\":\"\"}";
         }
     }
 
@@ -485,10 +805,19 @@ public class SystemBridge {
         }
         try {
             float scale = Float.parseFloat(scaleStr);
+            if (Float.isNaN(scale) || Float.isInfinite(scale)) {
+                return false;
+            }
             if (scale < 0.80f) scale = 0.80f;
             if (scale > 1.25f) scale = 1.25f;
-            Settings.System.putFloat(ctx.getContentResolver(), Settings.System.FONT_SCALE, scale);
-            showToast("Applied " + scale + "x UI text scale!");
+            boolean written = Settings.System.putFloat(
+                    ctx.getContentResolver(), Settings.System.FONT_SCALE, scale);
+            if (!written) {
+                showToast("Android rejected the text-scale change.");
+                return false;
+            }
+            showToast("Applied " + scale + "x UI text scale! Some screens update on the next "
+                    + "unlock or reboot.");
             return true;
         } catch (Exception e) {
             return false;
@@ -640,17 +969,6 @@ public class SystemBridge {
             about.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             ctx.startActivity(about);
         }
-    }
-
-    private boolean isImportantMessagingApp(String p) {
-        return p.contains("whatsapp")
-                || p.contains("telegram")
-                || p.equals("com.google.android.gm")
-                || p.equals("com.facebook.orca")
-                || p.contains("alarm")
-                || p.contains("clock")
-                || p.contains("dialer")
-                || p.contains("contacts");
     }
 
     private void showToast(final String msg) {

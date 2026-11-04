@@ -3,4 +3,12 @@ build/
 *.apk
 *.idsig
 *.keystore
+*.jks
+*.b64
+keystore/
 __pycache__/
+node_modules/
+
+# The shared signing key is committed on purpose (see README "Signing").
+!anne-control-apk/signing/
+!anne-control-apk/signing/*.keystore

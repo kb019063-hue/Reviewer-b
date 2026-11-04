@@ -1,9 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Changes in 1.0.2 (see docs/CODE_REVIEW.md):
+      * android:packageNames removed. It restricted events to com.android.settings,
+        which silently hides any Settings screen hosted by another package, while
+        the Java code already checks the window package itself.
+      * notificationTimeout 120 -> 260 ms. With typeWindowContentChanged a scrolling
+        Settings page emitted ~8 events/s, and each event walked the whole
+        accessibility tree once per button alias.
+      * flagRequestFilterKeyEvents / canRequestFilterKeyEvents enabled so a hardware
+        key can abort a run without needing to reach the app's own UI.
+-->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagReportViewIds|flagIncludeNotImportantViews"
+    android:accessibilityFlags="flagDefault|flagReportViewIds|flagIncludeNotImportantViews|flagRequestFilterKeyEvents"
+    android:canRequestFilterKeyEvents="true"
     android:canRetrieveWindowContent="true"
     android:description="@string/accessibility_service_desc"
-    android:notificationTimeout="120"
-    android:packageNames="com.android.settings" />
+    android:notificationTimeout="260"
+    android:settingsActivity="com.annecontrol.p20lite.MainActivity" />

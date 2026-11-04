@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_label">AnneControl: Auto-Reiniger &amp; Bloatware-Helfer</string>
+    <string name="accessibility_service_desc">Ermöglicht AnneControl, bei Huawei-EMUI-9.1-Bloatware und Apps mit großem Cache automatisch „Beenden erzwingen“, „Deaktivieren“ oder „Cache leeren“ zu tippen, damit Sie nicht Dutzende Menüs von Hand durchgehen müssen. Greift niemals auf persönliche Daten zu und arbeitet zu 100 % offline.</string>
+</resources>
