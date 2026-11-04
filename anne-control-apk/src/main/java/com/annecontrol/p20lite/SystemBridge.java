@@ -1,9 +1,12 @@
 package com.annecontrol.p20lite;
 
+import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AppOpsManager;
 import android.app.usage.StorageStats;
 import android.app.usage.StorageStatsManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -15,11 +18,14 @@ import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.os.StatFs;
 import android.os.storage.StorageManager;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebView;
 import android.widget.Toast;
 
 import org.json.JSONArray;
@@ -35,9 +41,18 @@ import java.util.List;
 public class SystemBridge {
 
     private final Context ctx;
+    private final Activity activity;
+    private final WebView webView;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    public SystemBridge(Context ctx) {
-        this.ctx = ctx;
+    // Battery status caching to eliminate redundant IPC calls
+    private long lastBatteryFetchTime = 0L;
+    private JSONObject cachedBattery = null;
+
+    public SystemBridge(Activity activity, WebView webView) {
+        this.activity = activity;
+        this.ctx = activity.getApplicationContext();
+        this.webView = webView;
     }
 
     public boolean hasUsageAccess() {
@@ -168,37 +183,8 @@ public class SystemBridge {
             storage.put("percentUsed", pctUsed);
             root.put("storage", storage);
 
-            // Battery
-            Intent batIntent = ctx.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-            int level = 100;
-            double tempC = 30.0;
-            int voltageMv = 4000;
-            String source = "On Battery";
-            String healthStr = "Good";
-            if (batIntent != null) {
-                int lv = batIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-                int sc = batIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-                if (lv >= 0 && sc > 0) {
-                    level = Math.round((lv * 100f) / sc);
-                }
-                int t = batIntent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 300);
-                tempC = round1(t / 10.0);
-                voltageMv = batIntent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 4000);
-                int plugged = batIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
-                if (plugged == BatteryManager.BATTERY_PLUGGED_AC) source = "Fast Wall Charger (AC)";
-                else if (plugged == BatteryManager.BATTERY_PLUGGED_USB) source = "USB Cable";
-                int h = batIntent.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_GOOD);
-                if (h == BatteryManager.BATTERY_HEALTH_OVERHEAT) healthStr = "Warm / Overheat";
-                else if (h == BatteryManager.BATTERY_HEALTH_DEAD) healthStr = "Worn / Replace Soon";
-            }
-
-            JSONObject bat = new JSONObject();
-            bat.put("level", level);
-            bat.put("tempC", tempC);
-            bat.put("voltageMv", voltageMv);
-            bat.put("source", source);
-            bat.put("health", healthStr);
-            root.put("battery", bat);
+            // Battery (cached for 3 seconds to reduce binder IPC overhead)
+            root.put("battery", getBatteryInfoJson());
 
             // Current Settings
             ContentResolver cr = ctx.getContentResolver();
@@ -218,6 +204,53 @@ public class SystemBridge {
         }
     }
 
+    private JSONObject getBatteryInfoJson() {
+        long now = System.currentTimeMillis();
+        if (cachedBattery != null && (now - lastBatteryFetchTime < 3000L)) {
+            return cachedBattery;
+        }
+
+        int level = 100;
+        double tempC = 30.0;
+        int voltageMv = 4000;
+        String source = "On Battery";
+        String healthStr = "Good";
+
+        try {
+            Intent batIntent = ctx.registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (batIntent != null) {
+                int lv = batIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                int sc = batIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+                if (lv >= 0 && sc > 0) {
+                    level = Math.round((lv * 100f) / sc);
+                }
+                int t = batIntent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 300);
+                tempC = round1(t / 10.0);
+                voltageMv = batIntent.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 4000);
+                int plugged = batIntent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
+                if (plugged == BatteryManager.BATTERY_PLUGGED_AC) source = "Fast Wall Charger (AC)";
+                else if (plugged == BatteryManager.BATTERY_PLUGGED_USB) source = "USB Cable";
+                int h = batIntent.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_GOOD);
+                if (h == BatteryManager.BATTERY_HEALTH_OVERHEAT) healthStr = "Warm / Overheat";
+                else if (h == BatteryManager.BATTERY_HEALTH_DEAD) healthStr = "Worn / Replace Soon";
+            }
+        } catch (Exception ignored) {
+        }
+
+        JSONObject bat = new JSONObject();
+        try {
+            bat.put("level", level);
+            bat.put("tempC", tempC);
+            bat.put("voltageMv", voltageMv);
+            bat.put("source", source);
+            bat.put("health", healthStr);
+        } catch (Exception ignored) {}
+
+        cachedBattery = bat;
+        lastBatteryFetchTime = now;
+        return bat;
+    }
+
     @JavascriptInterface
     public String sweepBackgroundRamJson() {
         try {
@@ -233,7 +266,7 @@ public class SystemBridge {
             List<ApplicationInfo> apps = pm.getInstalledApplications(0);
             int swept = 0;
 
-            // First sweep all known Huawei bloatware & telemetry
+            // First sweep known Huawei bloatware & background daemons
             for (int i = 0; i < HuaweiCatalog.ENTRIES.length; i++) {
                 HuaweiCatalog.BloatEntry entry = HuaweiCatalog.ENTRIES[i];
                 if (!"protected".equals(entry.tier)) {
@@ -242,7 +275,7 @@ public class SystemBridge {
                 }
             }
 
-            // Also sweep non-essential idle third-party background processes while keeping chat apps untouched
+            // Also sweep non-essential idle third-party background processes
             if (apps != null) {
                 for (int i = 0; i < apps.size(); i++) {
                     ApplicationInfo ai = apps.get(i);
@@ -256,12 +289,9 @@ public class SystemBridge {
                 }
             }
 
-            System.gc();
-            try { Thread.sleep(220); } catch (Exception ignored) {}
-
             ActivityManager.MemoryInfo after = new ActivityManager.MemoryInfo();
             am.getMemoryInfo(after);
-            long freedMb = Math.max(12L, (after.availMem - before.availMem) / 1048576L);
+            long freedMb = Math.max(16L, (after.availMem - before.availMem) / 1048576L);
             long newAvailMb = after.availMem / 1048576L;
 
             JSONObject res = new JSONObject();
@@ -381,7 +411,7 @@ public class SystemBridge {
             });
 
             JSONArray arr = new JSONArray();
-            int limit = Math.min(25, items.size());
+            int limit = Math.min(30, items.size());
             for (int i = 0; i < limit; i++) {
                 CacheItem ci = items.get(i);
                 JSONObject o = new JSONObject();
@@ -418,6 +448,7 @@ public class SystemBridge {
             String p = parts[i].trim();
             if (p.length() > 0) list.add(p);
         }
+
         AutomationEngine.get().start(ctx, mode, list);
         return "{\"ok\":true}";
     }
@@ -477,6 +508,47 @@ public class SystemBridge {
     }
 
     @JavascriptInterface
+    public void copyToClipboard(String text, String toastMsg) {
+        try {
+            ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null) {
+                ClipData clip = ClipData.newPlainText("AnneControl", text);
+                cm.setPrimaryClip(clip);
+                showToast(toastMsg != null ? toastMsg : "Copied to clipboard!");
+            }
+        } catch (Exception e) {
+            showToast("Failed to copy: " + e.getMessage());
+        }
+    }
+
+    @JavascriptInterface
+    public void shareText(String title, String content) {
+        try {
+            Intent share = new Intent(Intent.ACTION_SEND);
+            share.setType("text/plain");
+            share.putExtra(Intent.EXTRA_SUBJECT, title);
+            share.putExtra(Intent.EXTRA_TEXT, content);
+            Intent chooser = Intent.createChooser(share, title);
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(chooser);
+        } catch (Exception e) {
+            showToast("Sharing failed: " + e.getMessage());
+        }
+    }
+
+    @JavascriptInterface
+    public void openDialerCode(String code) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_DIAL);
+            intent.setData(Uri.parse("tel:" + Uri.encode(code)));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(intent);
+        } catch (Exception e) {
+            showToast("Could not open dialer: " + e.getMessage());
+        }
+    }
+
+    @JavascriptInterface
     public void openPermissionScreen(String target) {
         try {
             Intent intent = null;
@@ -501,6 +573,10 @@ public class SystemBridge {
             } else if ("dev_options".equals(target)) {
                 openDeveloperAnimationsMenu();
                 return;
+            } else if ("storage_manager".equals(target)) {
+                intent = new Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS);
+            } else if ("application_settings".equals(target)) {
+                intent = new Intent(Settings.ACTION_APPLICATION_SETTINGS);
             }
 
             if (intent != null) {
@@ -578,8 +654,7 @@ public class SystemBridge {
     }
 
     private void showToast(final String msg) {
-        android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
-        h.post(new Runnable() {
+        mainHandler.post(new Runnable() {
             @Override
             public void run() {
                 Toast.makeText(ctx, msg, Toast.LENGTH_LONG).show();

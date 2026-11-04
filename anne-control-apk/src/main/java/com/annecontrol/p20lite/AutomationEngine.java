@@ -164,7 +164,7 @@ public class AutomationEngine {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             appContext.startActivity(intent);
             handler.removeCallbacks(timeoutRunnable);
-            handler.postDelayed(timeoutRunnable, 3800);
+            handler.postDelayed(timeoutRunnable, 4200); // 4.2s fallback on slow Kirin 659
         } catch (Exception e) {
             advanceToNextPackage();
         }

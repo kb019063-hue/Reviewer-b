@@ -11,6 +11,8 @@ jobs:
   build-apk:
     name: Build & Sign AnneControl APK (Android 9 / ANE-LX1)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,3 +39,19 @@ jobs:
           path: dist/AnneControl-P20Lite.apk
           if-no-files-found: error
           retention-days: 90
+
+      - name: Publish Direct-Download GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/arena/')
+        with:
+          tag_name: latest-apk
+          name: "AnneControl P20 Lite (Latest APK Direct Download)"
+          body: |
+            ### 📱 AnneControl for Huawei P20 Lite (ANE-LX1 / EMUI 9.1)
+            Direct, 1-tap download for Android (no PC, unzip, or login required).
+            
+            - **Download File**: Tap `AnneControl-P20Lite.apk` below directly on your phone browser.
+            - **Installation**: Open the downloaded APK and tap **Install** (allow install from this source if prompted).
+          files: dist/AnneControl-P20Lite.apk
+          prerelease: false
+          make_latest: true

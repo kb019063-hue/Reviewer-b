@@ -35,10 +35,10 @@
     position: sticky;
     top: 0;
     z-index: 20;
-    background: rgba(2, 6, 23, 0.92);
+    background: rgba(2, 6, 23, 0.94);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
-    padding: 14px 16px 12px;
+    padding: 13px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -190,6 +190,19 @@
     border-bottom: 1px solid var(--border);
   }
   .perm-row:last-child { border-bottom: none; padding-bottom: 0; }
+  .search-box {
+    width: 100%;
+    padding: 11px 14px;
+    background: var(--card-alt);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: #fff;
+    font-size: 13px;
+    outline: none;
+    box-sizing: border-box;
+    margin-top: 8px;
+  }
+  .search-box::placeholder { color: var(--muted); }
   .pkg-card {
     background: var(--card);
     border: 1px solid var(--border);
@@ -227,7 +240,7 @@
     backdrop-filter: blur(12px);
     border-top: 1px solid var(--border);
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     z-index: 30;
   }
   .nav-item {
@@ -239,13 +252,13 @@
     align-items: center;
     justify-content: center;
     gap: 3px;
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 700;
   }
   .nav-item.active {
     color: var(--sky);
   }
-  .nav-icon { font-size: 17px; line-height: 1; }
+  .nav-icon { font-size: 16px; line-height: 1; }
   .pill-row {
     display: flex;
     gap: 6px;
@@ -266,6 +279,17 @@
     background: rgba(56,189,248,0.18);
     color: var(--sky);
     border-color: rgba(56,189,248,0.45);
+  }
+  .adb-code-block {
+    background: #020617;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 11px;
+    font-family: monospace;
+    font-size: 11px;
+    color: #38bdf8;
+    word-break: break-all;
+    user-select: text;
   }
   .hidden { display: none !important; }
 </style>
@@ -291,7 +315,7 @@
 
     <!-- 1-TAP INSTANT RAM & BLOAT SWEEPER -->
     <div class="hero-card">
-      <span class="badge badge-sky">No PC Needed · Works Immediately</span>
+      <span class="badge badge-sky">No PC Needed · Elevated System Access</span>
       <h2>⚡ 1-Tap Huawei Bloat &amp; RAM Sweep</h2>
       <p>Instantly terminates background Huawei telemetry, HiSearch, HiBoard, and idle memory hogs eating your 4 GB RAM while keeping WhatsApp &amp; alarms untouched.</p>
       <button class="btn btn-primary" id="btnSweep" onclick="runRamSweep()">Sweep Background Bloat &amp; Free RAM</button>
@@ -299,14 +323,14 @@
 
     <!-- SPECIAL SYSTEM ACCESS SWITCHES -->
     <div class="card">
-      <span class="badge badge-warn">Supercharge Access</span>
+      <span class="badge badge-warn">Higher Access Switches</span>
       <h3 style="margin-top:6px;">Elevated Android System Permissions</h3>
-      <p style="margin-bottom:8px;">Flipping these built-in Android switches gives AnneControl deeper system power than normal apps:</p>
+      <p style="margin-bottom:8px;">Granting these built-in Android switches gives AnneControl direct system-level control over EMUI 9.1:</p>
 
       <div class="perm-row">
         <div>
           <div style="font-size:13px;font-weight:700;color:#fff;">1. Hands-Free Auto-Cleaner</div>
-          <div style="font-size:11px;color:var(--muted);">Auto-clicks Force Stop, Disable &amp; Clear Cache</div>
+          <div style="font-size:11px;color:var(--muted);">Automates Force Stop &amp; Clear Cache clicks</div>
         </div>
         <button id="permAccBtn" class="btn btn-sm btn-outline" onclick="openPerm('accessibility')">Enable</button>
       </div>
@@ -322,9 +346,17 @@
       <div class="perm-row">
         <div>
           <div style="font-size:13px;font-weight:700;color:#fff;">3. System Settings Writer</div>
-          <div style="font-size:11px;color:var(--muted);">Applies sleek Android 10 compact UI scaling</div>
+          <div style="font-size:11px;color:var(--muted);">Applies sleek modern compact UI text scaling</div>
         </div>
         <button id="permWriteBtn" class="btn btn-sm btn-outline" onclick="openPerm('write_settings')">Enable</button>
+      </div>
+
+      <div class="perm-row">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:#fff;">4. Battery Keep-Alive Exemption</div>
+          <div style="font-size:11px;color:var(--muted);">Prevents EMUI Doze from killing cleanups</div>
+        </div>
+        <button id="permBatBtn" class="btn btn-sm btn-outline" onclick="openPerm('battery_exempt')">Enable</button>
       </div>
     </div>
 
@@ -362,7 +394,10 @@
   <div id="tab-bloat" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
     <div class="card">
       <h3>Huawei P20 Lite Bloatware Control</h3>
-      <p>With <strong>Auto-Cleaner</strong> enabled, tap below to automatically walk through Huawei's bloat apps and Disable or Force-Stop them hands-free — or tap any app's button to open its hidden system control screen directly!</p>
+      <p>With <strong>Auto-Cleaner</strong> enabled, tap below to automatically walk through Huawei's bloat apps and Disable or Force-Stop them hands-free — or search for any package!</p>
+      
+      <input type="text" id="bloatSearchInput" class="search-box" placeholder="🔍 Search bloatware (e.g. search, meta, tips, music)..." oninput="filterBloatSearch()" />
+
       <div class="grid2" style="margin-top:10px;">
         <button class="btn btn-primary" style="margin-top:0;padding:11px 10px;font-size:12px;" onclick="autoRunSafeBloat('disable')">Auto-Disable Safe Bloat</button>
         <button class="btn btn-outline" style="margin-top:0;padding:11px 10px;font-size:12px;" onclick="autoRunSafeBloat('force_stop')">Auto Force-Stop All</button>
@@ -399,6 +434,39 @@
   <!-- ================= TAB 4: EMUI 9.1 BUG FIXES ================= -->
   <div id="tab-fixes" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
 
+    <!-- FIX 0: STOP APPS RELOADING / RESTARTING IN RECENTS -->
+    <div class=card style="border: 1px solid rgba(56, 189, 248, 0.4); background: linear-gradient(145deg, rgba(14, 165, 233, 0.12), #0f172a);">
+      <span class="badge badge-sky">Fix Apps Reloading In Recents</span>
+      <h3 style="margin-top:6px;">🛑 Stop EMUI 9.1 From Killing Recent Apps</h3>
+      <p>EMUI 9.1 introduced an ultra-aggressive internal daemon (<strong>PowerGenie</strong>) that forcibly kills apps in the background within 60 seconds even when you have 2–3 GB free RAM. Follow these 3 direct phone steps:</p>
+
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
+        <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 1: Set App Launch to Manual</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Turn OFF 'Manage automatically' for apps you switch between, and toggle ON Auto-launch, Secondary launch &amp; Run in background.</div>
+          <button class="btn btn-primary" style="margin-top:7px;padding:9px;font-size:12px;" onclick="openPerm('huawei_applaunch')">Open App Launch Settings →</button>
+        </div>
+
+        <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 2: Disable Battery Optimization (Doze)</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Switch filter to 'All apps', select your apps, and change to 'Don't allow'.</div>
+          <button class="btn btn-amber" style="margin-top:7px;padding:9px;font-size:12px;" onclick="openPerm('raw_doze')">Open Raw Android Doze List →</button>
+        </div>
+
+        <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 3: Auto-Disable Huawei PowerGenie</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Automatically Force-Stop or Disable Huawei's aggressive background killer daemon hands-free.</div>
+          <button class="btn btn-emerald" style="margin-top:7px;padding:9px;font-size:12px;" onclick="autoSingle('disable', 'com.huawei.powergenie')">Auto-Disable PowerGenie →</button>
+        </div>
+
+        <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 4: Lock App in Recent Apps Screen</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Open your recent apps overview (swipe up or tap square button), then <strong>swipe DOWN</strong> on the app card until a 🔒 padlock icon appears!</div>
+        </div>
+      </div>
+    </div>
+
+
     <!-- FIX 1: 0.5x GPU ANIMATIONS -->
     <div class="card">
       <span class="badge badge-sky">Biggest Lag Fix on Kirin 659</span>
@@ -429,6 +497,48 @@
     </div>
 
   </div>
+
+  <!-- ================= TAB 5: POWER USER & PERMANENT ADB COMMANDS ================= -->
+  <div id="tab-power" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
+    <div class="hero-card">
+      <span class="badge badge-sky">No Root Needed</span>
+      <h2>🚀 Maximum Elevated Access (ADB Tools)</h2>
+      <p>Because EMUI 9.1 cannot receive further OTA updates, running these 1-line ADB commands once gives you the deepest possible system performance and permanently strips system bloat.</p>
+    </div>
+
+    <!-- COMMAND 1: PERMANENT SYSTEM BLOAT UNINSTALL SCRIPT -->
+    <div class="card">
+      <span class="badge badge-ok">1-Click Copy</span>
+      <h3 style="margin-top:6px;">Permanent Bloat Stripper Script</h3>
+      <p style="margin-bottom:8px;">Uninstall HiSearch, HiView, and telemetry completely without rooting. Paste this into your terminal or ADB Shell:</p>
+      <div class="adb-code-block" id="adbScriptCode">pm uninstall -k --user 0 com.huawei.search &amp;&amp; pm uninstall -k --user 0 com.huawei.intelligent &amp;&amp; pm uninstall -k --user 0 com.huawei.hiview &amp;&amp; pm uninstall -k --user 0 com.huawei.bd &amp;&amp; pm uninstall -k --user 0 com.huawei.vassistant &amp;&amp; pm uninstall -k --user 0 com.facebook.appmanager</div>
+      <div class="grid2" style="margin-top:10px;">
+        <button class="btn btn-outline" style="margin-top:0;font-size:12px;" onclick="copyAdbScript()">📋 Copy Script</button>
+        <button class="btn btn-outline" style="margin-top:0;font-size:12px;" onclick="shareAdbScript()">📤 Share / Save</button>
+      </div>
+    </div>
+
+    <!-- COMMAND 2: SYSTEM WRITE PERMISSION VIA ADB -->
+    <div class="card">
+      <span class="badge badge-warn">Developer Permission Grant</span>
+      <h3 style="margin-top:6px;">Grant System Permissions via ADB</h3>
+      <p style="margin-bottom:8px;">Grant AnneControl direct secure settings and package usage permissions from your computer with one command:</p>
+      <div class="adb-code-block" id="adbPermCode">adb shell pm grant com.annecontrol.p20lite android.permission.WRITE_SECURE_SETTINGS &amp;&amp; adb shell appops set com.annecontrol.p20lite GET_USAGE_STATS allow</div>
+      <button class="btn btn-outline" style="margin-top:10px;font-size:12px;" onclick="copyAdbPerm()">📋 Copy ADB Grant Command</button>
+    </div>
+
+    <!-- SECRET HUAWEI PROJECT MENU CODES -->
+    <div class="card">
+      <span class="badge badge-sky">Secret EMUI Diagnostic Codes</span>
+      <h3 style="margin-top:6px;">Huawei Hardware Dial Codes</h3>
+      <p style="margin-bottom:8px;">Tap any button to launch the P20 Lite phone dialer with hidden diagnostic and battery test screens:</p>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+        <button class="btn btn-outline" style="margin-top:0;padding:10px;" onclick="dialCode('*#*#2846579#*#*')">📞 ProjectMenu (*#*#2846579#*#*)</button>
+        <button class="btn btn-outline" style="margin-top:0;padding:10px;" onclick="dialCode('*#06#')">📞 Check IMEI (*#06#)</button>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <!-- BOTTOM MOBILE NAVIGATION -->
@@ -447,7 +557,11 @@
   </button>
   <button class="nav-item" id="nav-fixes" onclick="switchTab('fixes')">
     <span class="nav-icon">🔧</span>
-    <span>9.1 Fixes</span>
+    <span>Fixes</span>
+  </button>
+  <button class="nav-item" id="nav-power" onclick="switchTab('power')">
+    <span class="nav-icon">🚀</span>
+    <span>Power</span>
   </button>
 </div>
 
@@ -457,6 +571,7 @@
   var bloatFilter = "safe";
   var bloatItems = [];
   var cacheItems = [];
+  var bloatSearchTerm = "";
 
   function showBanner(msg) {
     var el = document.getElementById("statusToast");
@@ -467,7 +582,7 @@
 
   function switchTab(tab) {
     currentTab = tab;
-    var tabs = ["boost", "bloat", "cache", "fixes"];
+    var tabs = ["boost", "bloat", "cache", "fixes", "power"];
     for (var i = 0; i < tabs.length; i++) {
       var t = tabs[i];
       var view = document.getElementById("tab-" + t);
@@ -533,6 +648,7 @@
       setPermButton("permAccBtn", d.permissions.accessibility);
       setPermButton("permUsageBtn", d.permissions.usageAccess);
       setPermButton("permWriteBtn", d.permissions.writeSettings);
+      setPermButton("permBatBtn", d.permissions.batteryExemption);
     } catch (e) {}
   }
 
@@ -577,6 +693,12 @@
     renderBloatList();
   }
 
+  function filterBloatSearch() {
+    var input = document.getElementById("bloatSearchInput");
+    bloatSearchTerm = (input ? input.value : "").trim().toLowerCase();
+    renderBloatList();
+  }
+
   function loadBloatList() {
     if (!hasNative) return;
     try {
@@ -590,7 +712,14 @@
     box.innerHTML = "";
     for (var i = 0; i < bloatItems.length; i++) {
       var item = bloatItems[i];
-      if (item.tier !== bloatFilter) continue;
+      if (bloatSearchTerm) {
+        var matchTitle = item.title.toLowerCase().indexOf(bloatSearchTerm) !== -1;
+        var matchPkg = item.pkg.toLowerCase().indexOf(bloatSearchTerm) !== -1;
+        var matchDesc = item.desc.toLowerCase().indexOf(bloatSearchTerm) !== -1;
+        if (!matchTitle && !matchPkg && !matchDesc) continue;
+      } else {
+        if (item.tier !== bloatFilter) continue;
+      }
 
       var stateBadge = "";
       if (item.state === "disabled") {
@@ -701,6 +830,39 @@
       pkgs.push(cacheItems[i].pkg);
     }
     window.AnneNative.startAutomation("clear_cache", pkgs.join(","));
+  }
+
+  function copyAdbScript() {
+    var txt = document.getElementById("adbScriptCode").textContent;
+    if (hasNative) {
+      window.AnneNative.copyToClipboard(txt, "Copied ADB bloat script to clipboard!");
+    } else {
+      navigator.clipboard && navigator.clipboard.writeText(txt);
+      showBanner("Copied ADB bloat script to clipboard!");
+    }
+  }
+
+  function shareAdbScript() {
+    var txt = document.getElementById("adbScriptCode").textContent;
+    if (hasNative) {
+      window.AnneNative.shareText("Huawei P20 Lite ADB Bloatware Script", txt);
+    }
+  }
+
+  function copyAdbPerm() {
+    var txt = document.getElementById("adbPermCode").textContent;
+    if (hasNative) {
+      window.AnneNative.copyToClipboard(txt, "Copied ADB permission grant command!");
+    } else {
+      navigator.clipboard && navigator.clipboard.writeText(txt);
+      showBanner("Copied ADB permission grant command!");
+    }
+  }
+
+  function dialCode(code) {
+    if (hasNative) {
+      window.AnneNative.openDialerCode(code);
+    }
   }
 
   function refreshAll() {
