@@ -230,11 +230,14 @@ def signing_password_args(passwords=None):
 
 def assert_signer(verify_output, expected_hex):
     """The APK must carry the committed certificate, or upgrades break silently."""
-    match = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)", verify_output)
+    # apksigner words this differently across build-tools versions ("Signer #1
+    # certificate SHA-256 digest" vs "V3.0 Signer: certificate SHA-256 digest"), and
+    # "public key SHA-256 digest" is a different value - match the certificate only.
+    match = re.search(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", verify_output)
     if not match:
-        tail = " | ".join(verify_output.strip().splitlines()[-5:])
+        tail = " | ".join(verify_output.strip().splitlines()[:12])
         sys.exit("ERROR: could not read the signer certificate from apksigner output: " + tail)
-    actual = match.group(1).lower()
+    actual = match.group(1).replace(":", "").lower()
     if actual != expected_hex:
         sys.exit(
             "ERROR: APK is signed by\n  " + actual + "\nbut the committed key is\n  "
