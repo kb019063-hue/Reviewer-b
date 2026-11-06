@@ -21,8 +21,9 @@
   * {
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
-    user-select: none;
   }
+  button { user-select: none; }
+  input, .adb-code-block { user-select: text; -webkit-user-select: text; }
   body {
     margin: 0;
     padding: 0;
@@ -71,6 +72,7 @@
     font-weight: 600;
   }
   .refresh-btn {
+    min-height: 44px;
     background: var(--card);
     border: 1px solid var(--border);
     color: var(--text);
@@ -112,13 +114,14 @@
   .badge-high { background: rgba(251,113,133,0.16); color: var(--rose); }
   h2 { margin: 6px 0 6px; font-size: 17px; font-weight: 800; }
   h3 { margin: 0 0 5px; font-size: 15px; font-weight: 700; }
-  p { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+  p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--muted); }
   .btn {
     width: 100%;
     border: none;
     border-radius: 12px;
+    min-height: 46px;
     padding: 13px 16px;
-    font-size: 13.5px;
+    font-size: 14px;
     font-weight: 800;
     cursor: pointer;
     margin-top: 12px;
@@ -146,9 +149,10 @@
   }
   .btn-sm {
     width: auto;
+    min-height: 42px;
     margin-top: 0;
-    padding: 7px 12px;
-    font-size: 11.5px;
+    padding: 8px 12px;
+    font-size: 12px;
     border-radius: 9px;
   }
   .grid2 {
@@ -163,7 +167,7 @@
     color: #fff;
   }
   .stat-sub {
-    font-size: 11px;
+    font-size: 12px;
     color: var(--muted);
     margin-top: 3px;
   }
@@ -190,6 +194,7 @@
   }
   .perm-row:last-child { border-bottom: none; padding-bottom: 0; }
   .search-box {
+    min-height: 44px;
     width: 100%;
     padding: 11px 14px;
     background: var(--card-alt);
@@ -218,7 +223,7 @@
     gap: 8px;
   }
   .pkg-name { font-size: 13.5px; font-weight: 700; color: #fff; }
-  .pkg-id { font-size: 10.5px; font-family: monospace; color: var(--muted); word-break: break-all; }
+  .pkg-id { font-size: 12px; font-family: monospace; color: var(--muted); word-break: break-all; }
   .toast-banner {
     background: rgba(52, 211, 153, 0.14);
     border: 1px solid rgba(52, 211, 153, 0.4);
@@ -264,6 +269,7 @@
     padding-bottom: 2px;
   }
   .pill {
+    min-height: 44px;
     border: 1px solid var(--border);
     background: var(--card-alt);
     color: var(--muted);
@@ -290,6 +296,21 @@
     user-select: text;
   }
   .hidden { display: none !important; }
+  .confirm-backdrop {
+    position: fixed; inset: 0; z-index: 60; display: flex; align-items: center;
+    justify-content: center; padding: 20px; background: rgba(0,0,0,.72);
+  }
+  .confirm-dialog {
+    width: 100%; max-width: 420px; background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; padding: 18px; box-shadow: 0 16px 48px rgba(0,0,0,.5);
+  }
+  .confirm-targets {
+    max-height: 28vh; overflow: auto; margin: 12px 0 0; padding: 8px 8px 8px 26px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 13px; line-height: 1.5;
+  }
+  .confirm-actions { display:flex; gap:10px; margin-top:16px; }
+  .confirm-actions .btn { margin-top:0; }
 </style>
 </head>
 <body>
@@ -315,11 +336,11 @@
     <div class="hero-card">
       <span class="badge badge-sky">No PC Needed · Elevated System Access</span>
       <h2>⚡ 1-Tap Huawei Bloat &amp; RAM Sweep</h2>
-      <p>Stops Huawei telemetry, HiSearch, HiBoard and other background hogs eating your 4 GB RAM.
-      <strong>Nothing is exempt by default</strong> — chat apps like WhatsApp keep a connection alive
-      after you close them, so they get stopped too. Put anything you need running on the
-      Keep&nbsp;Alive list below.</p>
-      <button class="btn btn-primary" id="btnSweep" onclick="runRamSweep()">Sweep Background Bloat &amp; Free RAM</button>
+      <p>Requests Android to stop eligible background processes in the selected scope.
+      Android may ignore a request or restart an app; this is not Force Stop and does not
+      guarantee more free RAM. <strong>Nothing is exempt by default</strong> — put apps you
+      want protected on the Keep&nbsp;Alive list below.</p>
+      <button class="btn btn-primary" id="btnSweep" onclick="runRamSweep()">Request background cleanup</button>
     </div>
 
     <!-- KILL POLICY / KEEP ALIVE -->
@@ -356,7 +377,7 @@
       <div class="perm-row">
         <div>
           <div style="font-size:13px;font-weight:700;color:#fff;">2. Deep App Cache Scanner</div>
-          <div style="font-size:11px;color:var(--muted);">Reads exact hidden cache MB inside all apps</div>
+          <div style="font-size:11px;color:var(--muted);">Reads cache sizes for queryable third-party apps</div>
         </div>
         <button id="permUsageBtn" class="btn btn-sm btn-outline" onclick="openPerm('usage')">Enable</button>
       </div>
@@ -372,7 +393,7 @@
       <div class="perm-row">
         <div>
           <div style="font-size:13px;font-weight:700;color:#fff;">4. Battery Keep-Alive Exemption</div>
-          <div style="font-size:11px;color:var(--muted);">Prevents EMUI Doze from killing cleanups</div>
+          <div style="font-size:11px;color:var(--muted);">May reduce battery restrictions; not a guarantee</div>
         </div>
         <button id="permBatBtn" class="btn btn-sm btn-outline" onclick="openPerm('battery_exempt')">Enable</button>
       </div>
@@ -412,18 +433,19 @@
   <div id="tab-bloat" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
     <div class="card">
       <h3>Huawei P20 Lite Bloatware Control</h3>
-      <p>With <strong>Auto-Cleaner</strong> enabled, tap below to automatically walk through Huawei's bloat apps and Disable or Force-Stop them hands-free — or search for any package!</p>
+      <p>These catalog suggestions target ANE-LX1 / EMUI 9.1 and can still affect firmware features. Review each app before changing it; disabling is reversible only if you can return to Settings and re-enable it.</p>
       
       <input type="text" id="bloatSearchInput" class="search-box" placeholder="🔍 Search bloatware (e.g. search, meta, tips, music)..." oninput="filterBloatSearch()" />
 
       <div class="grid2" style="margin-top:10px;">
-        <button class="btn btn-primary" style="margin-top:0;padding:11px 10px;font-size:12px;" onclick="autoRunSafeBloat('disable')">Auto-Disable Safe Bloat</button>
-        <button class="btn btn-outline" style="margin-top:0;padding:11px 10px;font-size:12px;" onclick="autoRunSafeBloat('force_stop')">Auto Force-Stop All</button>
+        <button class="btn btn-primary" style="margin-top:0;padding:11px 10px;font-size:12px;" onclick="autoRunCuratedBloat('disable')">Disable curated apps</button>
+        <button class="btn btn-outline" style="margin-top:0;padding:11px 10px;font-size:12px;" onclick="autoRunCuratedBloat('force_stop')">Force-stop curated apps</button>
       </div>
+      <p style="margin-top:8px;">Bulk actions ask for confirmation. The app verifies the target device and checks the resulting state; anything uncertain is counted as a failure, not success.</p>
     </div>
 
     <div class="pill-row">
-      <button class="pill active" id="flt-safe" onclick="setBloatFilter('safe')">🟢 Safe Bloat</button>
+      <button class="pill active" id="flt-safe" onclick="setBloatFilter('safe')">🟢 Curated</button>
       <button class="pill" id="flt-optional" onclick="setBloatFilter('optional')">🟡 Optional</button>
       <button class="pill" id="flt-protected" onclick="setBloatFilter('protected')">🔒 Protected</button>
     </div>
@@ -434,29 +456,29 @@
   <!-- ================= TAB 3: DEEP CACHE SCANNER ================= -->
   <div id="tab-cache" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
     <div class="hero-card">
-      <span class="badge badge-ok">100% Safe · Never Touches Chats or Photos</span>
-      <h2 id="totalCacheHeader">Deep App Cache Cleaner</h2>
-      <p>EMUI 9.1 slows down sharply when leftover app caches pile up on eMMC 5.1 storage. Scan every app's hidden cache size and auto-clean them hands-free!</p>
+      <span class="badge badge-warn">Cache only · Review before clearing</span>
+      <h2 id="totalCacheHeader">Third-party App Cache Scanner</h2>
+      <p>Scans cache sizes for third-party apps that Android lets AnneControl query, then lists the largest results. Clearing cache is intended not to clear app data, but apps may need to rebuild cached files or re-download offline content.</p>
       <button class="btn btn-emerald" id="btnAutoCache" onclick="autoCleanTopCaches()">Auto-Clean Top App Caches</button>
     </div>
 
     <div id="cacheNeedPermCard" class="card hidden">
       <h3>Turn On Usage Access First</h3>
-      <p>Android 9 requires flipping ON <strong>Usage Access</strong> so AnneControl can read exact megabytes of hidden cache inside other apps.</p>
+      <p>Enable <strong>Usage Access</strong> so Android can provide cache-size statistics for queryable third-party apps. Some packages may still be unavailable.</p>
       <button class="btn btn-amber" onclick="openPerm('usage')">Open Usage Access Switch →</button>
     </div>
 
     <div id="cacheListContainer" style="display:flex;flex-direction:column;gap:10px;"></div>
   </div>
 
-  <!-- ================= TAB 4: EMUI 9.1 BUG FIXES ================= -->
+  <!-- ================= TAB 4: EMUI 9.1 TIPS ================= -->
   <div id="tab-fixes" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
 
     <!-- FIX 0: STOP APPS RELOADING / RESTARTING IN RECENTS -->
     <div class="card" style="border: 1px solid rgba(56, 189, 248, 0.4); background: linear-gradient(145deg, rgba(14, 165, 233, 0.12), #0f172a);">
-      <span class="badge badge-sky">Fix Apps Reloading In Recents</span>
-      <h3 style="margin-top:6px;">🛑 Stop EMUI 9.1 From Killing Recent Apps</h3>
-      <p>EMUI 9.1 introduced an ultra-aggressive internal daemon (<strong>PowerGenie</strong>) that forcibly kills apps in the background within 60 seconds even when you have 2–3 GB free RAM. Follow these 3 direct phone steps:</p>
+      <span class="badge badge-sky">Background app tips · results vary</span>
+      <h3 style="margin-top:6px;">Review background-app settings</h3>
+      <p>Huawei and Android power-management settings can affect background apps. The exact behavior varies by firmware; these steps may change battery use and cannot guarantee that an app stays active or that notifications arrive immediately.</p>
 
       <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
         <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
@@ -467,19 +489,19 @@
 
         <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
           <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 2: Disable Battery Optimization (Doze)</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Switch filter to 'All apps', select your apps, and change to 'Don't allow'.</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Review each app's battery-optimization setting. Exemptions can increase battery use and may not override Huawei-specific controls.</div>
           <button class="btn btn-amber" style="margin-top:7px;padding:9px;font-size:12px;" onclick="openPerm('raw_doze')">Open Raw Android Doze List →</button>
         </div>
 
         <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
-          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 3: Auto-Disable Huawei PowerGenie</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Automatically Force-Stop or Disable Huawei's aggressive background killer daemon hands-free.</div>
-          <button class="btn btn-emerald" style="margin-top:7px;padding:9px;font-size:12px;" onclick="autoSingle('disable', 'com.huawei.powergenie')">Auto-Disable PowerGenie →</button>
+          <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 3: Review Huawei PowerGenie</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">PowerGenie is a Huawei power-management component. Disabling it may change battery behavior and may not prevent app reloads.</div>
+          <button class="btn btn-emerald" style="margin-top:7px;padding:9px;font-size:12px;" onclick="openAppInfo('com.huawei.powergenie')">Review in Settings →</button>
         </div>
 
         <div style="background:var(--card-alt);padding:10px;border-radius:10px;border:1px solid var(--border);">
           <div style="font-size:12.5px;font-weight:700;color:#fff;">Step 4: Lock App in Recent Apps Screen</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:3px;">Open your recent apps overview (swipe up or tap square button), then <strong>swipe DOWN</strong> on the app card until a 🔒 padlock icon appears!</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px;">If your EMUI build supports app locking, open Recents and use its app-card lock control (gesture varies by version).</div>
         </div>
       </div>
     </div>
@@ -487,9 +509,9 @@
 
     <!-- FIX 1: 0.5x GPU ANIMATIONS -->
     <div class="card">
-      <span class="badge badge-sky">Biggest Lag Fix on Kirin 659</span>
-      <h3 style="margin-top:6px;">0.5x Snappy System Animations</h3>
-      <p id="animFixDesc">EMUI 9.1's default 1.0x window transitions overload the P20 Lite's GPU. Tap below to jump straight to Developer Options and set <strong>Window</strong>, <strong>Transition</strong>, and <strong>Animator scale</strong> to <strong>0.5x</strong>!</p>
+      <span class="badge badge-sky">Optional adjustment · results vary</span>
+      <h3 style="margin-top:6px;">Try 0.5x system animations</h3>
+      <p id="animFixDesc">Lower animation scales can make transitions feel quicker, but do not improve the device's underlying processing speed. Open Developer Options to review the settings yourself.</p>
       <button class="btn btn-primary" onclick="openPerm('dev_options')">Jump to Animation Speed Switches →</button>
     </div>
 
@@ -497,7 +519,7 @@
     <div class="card">
       <span class="badge badge-warn">Fix Missed WhatsApp &amp; Push Alerts</span>
       <h3 style="margin-top:6px;">Unlock Hidden Huawei Power &amp; Doze Menus</h3>
-      <p>EMUI 9.1 aggressively kills background chat apps. Use both direct system shortcuts below so your messages never arrive late:</p>
+      <p>Huawei and Android battery policies can limit background activity. These settings may help some apps but can increase battery use; they cannot guarantee delivery timing.</p>
       <button class="btn btn-amber" onclick="openPerm('huawei_applaunch')">1. Open Huawei App-Launch Manager</button>
       <button class="btn btn-outline" style="margin-top:8px;" onclick="openPerm('raw_doze')">2. Open Hidden Raw Android Doze List</button>
     </div>
@@ -505,13 +527,13 @@
     <!-- FIX 3: ANDROID 10 SLEEK COMPACT UI SCALING -->
     <div class="card">
       <span class="badge badge-ok">Direct System Write</span>
-      <h3 style="margin-top:6px;">Modern Android 10 Compact UI Text Scale</h3>
-      <p>EMUI 9.1 makes menus look oversized and cramped. Apply a sleeker, modern Android 10 text scale directly (requires Modify System Settings):</p>
+      <h3 style="margin-top:6px;">System-wide text size</h3>
+      <p>This changes text size across Android, not just AnneControl, and may affect readability. It requires Modify System Settings. AnneControl saves your current scale the first time you change it so you can restore it below.</p>
       <div class="grid2" style="margin-top:10px;">
-        <button class="btn btn-outline" style="margin-top:0;" onclick="applyFontScale('0.88')">0.88x Sleek</button>
-        <button class="btn btn-outline" style="margin-top:0;" onclick="applyFontScale('0.94')">0.94x Crisp</button>
+        <button class="btn btn-outline" style="margin-top:0;" onclick="applyFontScale('0.88')">Set 0.88x</button>
+        <button class="btn btn-outline" style="margin-top:0;" onclick="applyFontScale('0.94')">Set 0.94x</button>
       </div>
-      <button class="btn btn-outline" style="margin-top:8px;" onclick="applyFontScale('1.0')">Restore 1.0x Factory Default</button>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="restoreFontScale()">Restore previous text scale</button>
     </div>
 
   </div>
@@ -520,18 +542,17 @@
   <div id="tab-power" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
     <div class="hero-card">
       <span class="badge badge-sky">No Root Needed</span>
-      <h2>🚀 Maximum Elevated Access (ADB Tools)</h2>
-      <p>Because EMUI 9.1 cannot receive further OTA updates, running these 1-line ADB commands once gives you the deepest possible system performance and permanently strips system bloat.</p>
+      <h2>🚀 Advanced ADB helpers</h2>
+      <p>These optional ADB commands target preloads reported for EMEA ANE-LX1 firmware and remove them for the current user. Do not run them on another model without checking every package. Effects vary and no performance improvement is guaranteed; read each recovery command first.</p>
     </div>
 
     <!-- COMMAND 1: PERMANENT SYSTEM BLOAT UNINSTALL SCRIPT -->
     <div class="card">
       <span class="badge badge-ok">1-Click Copy</span>
-      <h3 style="margin-top:6px;">Permanent Bloat Stripper Script</h3>
-      <p style="margin-bottom:8px;">Uninstall HiSearch, HiView, and telemetry completely without rooting. Paste this into your terminal or ADB Shell:</p>
-      <div class="adb-code-block" id="adbScriptCode">pm uninstall -k --user 0 com.huawei.search &amp;&amp; pm uninstall -k --user 0 com.huawei.intelligent &amp;&amp; pm uninstall -k --user 0 com.huawei.hiview &amp;&amp; pm uninstall -k --user 0 com.huawei.bd &amp;&amp; pm uninstall -k --user 0 com.huawei.vassistant &amp;&amp; pm uninstall -k --user 0 com.facebook.appmanager</div>
-      <p style="margin-top:8px;">Undo any of it with <code>pm install-existing &lt;package&gt;</code> — this
-      removes the app for the current user only, the factory copy stays on the system partition.</p>
+      <h3 style="margin-top:6px;">Remove selected preloads for this user</h3>
+      <p style="margin-bottom:8px;">Advanced and firmware-specific. Review every package before running; this does not root the phone. Each command runs independently, so a missing package will not stop the rest:</p>
+      <div class="adb-code-block" id="adbScriptCode">pm uninstall -k --user 0 com.huawei.search; pm uninstall -k --user 0 com.huawei.intelligent; pm uninstall -k --user 0 com.huawei.hiview; pm uninstall -k --user 0 com.huawei.bd; pm uninstall -k --user 0 com.huawei.vassistant; pm uninstall -k --user 0 com.facebook.appmanager</div>
+      <p style="margin-top:8px;">This removes packages for the current user; it does not erase the factory copy. Restore an individual package with <code>pm install-existing &lt;package&gt;</code> if the firmware still provides it.</p>
       <div class="grid2" style="margin-top:10px;">
         <button class="btn btn-outline" style="margin-top:0;font-size:12px;" onclick="copyAdbScript()">📋 Copy Script</button>
         <button class="btn btn-outline" style="margin-top:0;font-size:12px;" onclick="shareAdbScript()">📤 Share / Save</button>
@@ -560,6 +581,18 @@
     </div>
 
   </div>
+</div>
+
+<div id="confirmBackdrop" class="confirm-backdrop hidden" role="presentation">
+  <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+    <h2 id="confirmTitle">Confirm action</h2>
+    <p id="confirmMessage"></p>
+    <ul id="confirmTargets" class="confirm-targets hidden" aria-label="Apps affected by this action"></ul>
+    <div class="confirm-actions">
+      <button class="btn btn-outline" id="cancelActionBtn" type="button">Cancel</button>
+      <button class="btn btn-primary" id="confirmActionBtn" type="button">Continue</button>
+    </div>
+  </section>
 </div>
 
 <!-- BOTTOM MOBILE NAVIGATION -->
@@ -597,6 +630,11 @@
   var keepLoaded = false;
   var keepModel = { sweepAllApps: true, entries: [] };
   var bannerTimer = null;
+  var unsupportedNoticeShown = false;
+  var keepSearchTimer = null;
+  var bloatSearchTimer = null;
+  var pendingConfirmAction = null;
+  var previousFocus = null;
 
   /* ------------------------------------------------------------------ helpers */
   /* App labels come from PackageManager, i.e. from any app the user installed.
@@ -648,6 +686,58 @@
     }, 6500);
   }
 
+  function closeActionConfirm(accepted) {
+    var backdrop = document.getElementById("confirmBackdrop");
+    if (backdrop) backdrop.classList.add("hidden");
+    var action = pendingConfirmAction;
+    pendingConfirmAction = null;
+    if (accepted && action) action();
+    else if (previousFocus && previousFocus.focus) previousFocus.focus();
+    previousFocus = null;
+  }
+
+  function packageLabel(pkg) {
+    var groups = [bloatItems, cacheItems, keepModel.entries];
+    for (var g = 0; g < groups.length; g++) {
+      for (var i = 0; i < groups[g].length; i++) {
+        if (groups[g][i].pkg === pkg) return groups[g][i].title || groups[g][i].label || pkg;
+      }
+    }
+    return pkg;
+  }
+
+  function requestActionConfirm(title, message, action, packages) {
+    var backdrop = document.getElementById("confirmBackdrop");
+    if (!backdrop) return;
+    previousFocus = document.activeElement;
+    setText("confirmTitle", title);
+    setText("confirmMessage", message);
+    var targets = document.getElementById("confirmTargets");
+    while (targets && targets.firstChild) targets.removeChild(targets.firstChild);
+    if (targets && packages && packages.length) {
+      targets.classList.remove("hidden");
+      for (var i = 0; i < packages.length; i++) {
+        targets.appendChild(make("li", null, packageLabel(packages[i]) + " (" + packages[i] + ")"));
+      }
+    } else if (targets) {
+      targets.classList.add("hidden");
+    }
+    pendingConfirmAction = action;
+    backdrop.classList.remove("hidden");
+    var confirmBtn = document.getElementById("confirmActionBtn");
+    if (confirmBtn) confirmBtn.focus();
+  }
+
+  document.getElementById("cancelActionBtn").addEventListener("click", function() {
+    closeActionConfirm(false);
+  });
+  document.getElementById("confirmActionBtn").addEventListener("click", function() {
+    closeActionConfirm(true);
+  });
+  document.addEventListener("keydown", function(event) {
+    if (event.key === "Escape" && pendingConfirmAction) closeActionConfirm(false);
+  });
+
   function switchTab(tab) {
     currentTab = tab;
     var tabs = ["boost", "bloat", "cache", "fixes", "power"];
@@ -698,6 +788,10 @@
       var d = JSON.parse(window.AnneNative.getDashboardJson());
       if (d.error) return;
       setText("topModelLabel", d.model + " · Android " + d.androidRelease);
+      if (d.supportedDevice === false && !unsupportedNoticeShown) {
+        unsupportedNoticeShown = true;
+        showBanner("This build is tuned for Huawei ANE-LX1 / Android 9 (EMUI 9.1). Settings automation is disabled on this device.");
+      }
       setText("ramAvailTxt", d.ram.availMb + " MB");
       setText("ramSubTxt", "Free of " + d.ram.totalMb + " MB (zRAM: " + d.ram.swapUsedMb + " MB)");
       var ramPct = Math.min(100, Math.round((d.ram.usedMb * 100) / d.ram.totalMb));
@@ -758,7 +852,7 @@
         showBanner("Sweep failed: " + e);
       } finally {
         btn.disabled = false;
-        btn.textContent = "Sweep Background Bloat & Free RAM";
+        btn.textContent = "Request background cleanup";
       }
     }, 40);
   }
@@ -793,9 +887,12 @@
   }
 
   function setSweepScope(all) {
+    if (hasNative && !window.AnneNative.setSweepAllApps(all)) {
+      showBanner("Could not save the sweep scope. Try again.");
+      return;
+    }
     keepModel.sweepAllApps = all;
     applyScopePills();
-    if (hasNative) window.AnneNative.setSweepAllApps(all);
     showBanner(all
       ? "Sweep will stop curated bloat plus every third-party app that is not on the Keep Alive list."
       : "Sweep will only stop the curated Huawei/Meta bloat list.");
@@ -803,7 +900,10 @@
 
   function toggleKeep(pkg, keep) {
     if (!hasNative) return;
-    window.AnneNative.setKeepAlive(pkg, keep);
+    if (!window.AnneNative.setKeepAlive(pkg, keep)) {
+      showBanner("Could not save this Keep Alive choice. Try again.");
+      return;
+    }
     for (var i = 0; i < keepModel.entries.length; i++) {
       if (keepModel.entries[i].pkg === pkg) keepModel.entries[i].kept = keep;
     }
@@ -813,7 +913,11 @@
   function filterKeepList() {
     var input = document.getElementById("keepSearchInput");
     keepSearchTerm = (input ? input.value : "").trim().toLowerCase();
-    renderKeepList();
+    if (keepSearchTimer) clearTimeout(keepSearchTimer);
+    keepSearchTimer = setTimeout(function() {
+      keepSearchTimer = null;
+      renderKeepList();
+    }, 120);
   }
 
   function renderKeepList() {
@@ -915,7 +1019,11 @@
   function filterBloatSearch() {
     var input = document.getElementById("bloatSearchInput");
     bloatSearchTerm = (input ? input.value : "").trim().toLowerCase();
-    renderBloatList();
+    if (bloatSearchTimer) clearTimeout(bloatSearchTimer);
+    bloatSearchTimer = setTimeout(function() {
+      bloatSearchTimer = null;
+      renderBloatList();
+    }, 120);
   }
 
   function renderBloatList() {
@@ -960,7 +1068,7 @@
     } else if (item.state === "not_installed") {
       head.appendChild(makeBadge("Not on Phone", "badge", "background:#1e293b;color:#94a3b8;"));
     } else {
-      head.appendChild(makeBadge(item.impact + " RAM", item.impact === "High" ? "badge badge-high" : "badge badge-warn"));
+      head.appendChild(makeBadge("Potential " + item.impact, item.impact === "High" ? "badge badge-high" : "badge badge-warn"));
     }
     card.appendChild(head);
 
@@ -1007,6 +1115,11 @@
 
   window.onCacheScan = function(res) {
     renderCacheList(res);
+    if (res && res.error) {
+      pendingAutoClean = false;
+      showBanner(res.message || "Cache scan failed. Check Usage Access and retry.");
+      return;
+    }
     if (!pendingAutoClean) return;
     pendingAutoClean = false;
     if (!cacheItems.length) {
@@ -1031,6 +1144,12 @@
       box.appendChild(cardWithText("Could not read cache sizes."));
       return;
     }
+    if (res.error) {
+      cacheItems = [];
+      if (permCard) permCard.classList.add("hidden");
+      box.appendChild(cardWithText(res.message || "Cache scan failed. Check Usage Access and retry."));
+      return;
+    }
     if (res.needsUsageAccess) {
       cacheItems = [];   /* never leave stale packages for autoCleanTopCaches */
       if (permCard) permCard.classList.remove("hidden");
@@ -1040,11 +1159,17 @@
     if (permCard) permCard.classList.add("hidden");
 
     cacheItems = res.items || [];
-    setText("totalCacheHeader", "Reclaimable Cache: " + res.totalCacheMb + " MB ("
-      + (res.scannedApps || 0) + " apps scanned)");
+    setText("totalCacheHeader", "Reported cache: " + res.totalCacheMb + " MB ("
+      + (res.scannedApps || 0) + " apps scanned"
+      + (res.failedApps ? ", " + res.failedApps + " unavailable" : "") + ")");
+    if (res.failedApps) {
+      showBanner("Some apps could not be scanned; cache total is partial.");
+    }
 
     if (!cacheItems.length) {
-      box.appendChild(cardWithText("App caches are already tiny (under 2 MB each)."));
+      box.appendChild(cardWithText(res.scannedApps
+        ? "No scanned third-party app had at least 2 MB of cache."
+        : "No queryable third-party apps were found."));
       return;
     }
 
@@ -1088,13 +1213,35 @@
   }
 
   /* ------------------------------------------------------------ automation */
-  function startAutomation(mode, pkgs) {
+  function startAutomation(mode, pkgs, confirmed) {
     if (!hasNative) {
       showBanner("Preview mode — install the APK on your P20 Lite.");
       return;
     }
     if (!pkgs || !pkgs.length) {
       showBanner("No apps selected.");
+      return;
+    }
+    if (!confirmed) {
+      var count = pkgs.length;
+      var title = "Confirm action";
+      var message = "Continue with " + count + " app" + (count === 1 ? "" : "s") + "?";
+      if (mode === "disable") {
+        title = "Disable apps?";
+        message = "Disable " + count + " selected app" + (count === 1 ? "" : "s")
+          + "? This can remove device features. Review the catalog and continue only if you understand the effect.";
+      } else if (mode === "force_stop") {
+        title = "Force-stop apps?";
+        message = "Force-stop " + count + " selected app" + (count === 1 ? "" : "s")
+          + "? Background work and notifications may stop.";
+      } else if (mode === "clear_cache") {
+        title = "Clear app caches?";
+        message = "Clear cached files for " + count + " app" + (count === 1 ? "" : "s")
+          + "? The automation is designed to tap Clear cache only; verify the Settings label before proceeding.";
+      }
+      requestActionConfirm(title, message, function() {
+        startAutomation(mode, pkgs, true);
+      }, pkgs);
       return;
     }
     var res;
@@ -1119,7 +1266,7 @@
     startAutomation(mode, [pkg]);
   }
 
-  function autoRunSafeBloat(mode) {
+  function autoRunCuratedBloat(mode) {
     if (!hasNative) {
       showBanner("Preview mode — install the APK on your P20 Lite.");
       return;
@@ -1135,7 +1282,7 @@
       }
     }
     if (!pkgs.length) {
-      showBanner("All safe bloat apps are already disabled or not present on this phone.");
+      showBanner("All curated apps are already disabled or not present on this phone.");
       return;
     }
     startAutomation(mode, pkgs);
@@ -1154,7 +1301,15 @@
     if (!hasNative) return;
     if (window.AnneNative.setCompactFontScale(scale)) {
       refreshDashboard();
-      showBanner("✓ Updated the system text scale to " + scale + "x.");
+      showBanner("✓ Updated the system-wide text scale to " + scale + "x.");
+    }
+  }
+
+  function restoreFontScale() {
+    if (!hasNative) return;
+    if (window.AnneNative.restoreOriginalFontScale()) {
+      refreshDashboard();
+      showBanner("✓ Restored the previous system text scale.");
     }
   }
 

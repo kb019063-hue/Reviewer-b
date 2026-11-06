@@ -9,7 +9,7 @@
  *   - async cache scan: progress streaming, callback rendering, no blocking call
  *   - every way to cancel a run (banner tap, in-app resume)
  *
- *   npm install jsdom && node ui_test.js
+ *   npm ci && npm test
  */
 const fs = require('fs');
 const { JSDOM, VirtualConsole } = require('jsdom');
@@ -31,7 +31,9 @@ const bloatPayload = () => ([
     desc: 'd', state: 'disabled', cacheMb: -1 }
 ]);
 
-const cachePayload = () => cacheMode === 'needs'
+const cachePayload = () => cacheMode === 'error'
+  ? { needsUsageAccess: false, error: true, message: 'Storage stats unavailable.', items: [] }
+  : cacheMode === 'needs'
   ? { needsUsageAccess: true, items: [] }
   : { needsUsageAccess: false, totalCacheMb: 812.4, scannedApps: 96, items: [
       { pkg: 'com.whatsapp', label: 'WhatsApp', cacheMb: 210.5, totalMb: 900 },
@@ -40,7 +42,9 @@ const cachePayload = () => cacheMode === 'needs'
 
 const native = {
   getDashboardJson: () => JSON.stringify({
-    model: 'ANE-LX1', manufacturer: 'HUAWEI', displayBuild: 'ANE-LX1 9.1.0', androidRelease: '9',
+    model: native.__supportedDevice === false ? 'Other model' : 'ANE-LX1',
+    supportedDevice: native.__supportedDevice !== false,
+    manufacturer: 'HUAWEI', displayBuild: 'ANE-LX1 9.1.0', androidRelease: '9',
     permissions: { usageAccess: true, accessibility: false, accessibilityStale: true,
                    writeSettings: true, batteryExemption: false },
     ram: { totalMb: 3768, availMb: 1234, usedMb: 2534, cachedMb: 500, swapTotalMb: 512, swapUsedMb: 76, lowMemory: false },
@@ -73,6 +77,10 @@ const native = {
   },
   startAutomation: (mode, csv) => {
     calls.push(['startAutomation', mode, csv]);
+    if (native.__supportedDevice === false) {
+      return JSON.stringify({ ok: false, unsupportedDevice: true,
+        message: 'Automation is limited to Huawei ANE-LX1 running Android 9 / EMUI 9.1.' });
+    }
     return JSON.stringify({ ok: false, needsAccessibility: true, serviceListed: true });
   },
   stopAutomation: () => { calls.push(['stopAutomation']); },
@@ -82,7 +90,8 @@ const native = {
   consumeRunSummaryJson: () => JSON.stringify({ available: true, message: 'Done: 3 succeeded, 1 skipped, 0 failed of 4 apps.' }),
   openPermissionScreen: (t) => calls.push(['openPerm', t]),
   openAppInfo: (p) => calls.push(['openAppInfo', p]),
-  setCompactFontScale: () => true,
+  setCompactFontScale: (scale) => { calls.push(['setCompactFontScale', scale]); return true; },
+  restoreOriginalFontScale: () => { calls.push(['restoreOriginalFontScale']); return true; },
   invalidateScanCaches: () => calls.push(['invalidate']),
   copyToClipboard: () => {}, shareText: () => {}, openDialerCode: () => {}
 };
@@ -134,7 +143,7 @@ function banner() { return doc.getElementById('statusToast').textContent; }
   ok('banner no longer fabricates 16 MB', !banner().includes('16 MB'), banner());
   ok('button re-enabled after sweep', !doc.getElementById('btnSweep').disabled);
   ok('button label restored',
-     doc.getElementById('btnSweep').textContent === 'Sweep Background Bloat & Free RAM',
+     doc.getElementById('btnSweep').textContent === 'Request background cleanup',
      doc.getElementById('btnSweep').textContent);
 
   console.log('\n[3] keep-alive list + injection safety');
@@ -178,8 +187,19 @@ function banner() { return doc.getElementById('statusToast').textContent; }
   ok('Auto-Disable button present for active app', !!autoDisable);
   if (autoDisable) {
     autoDisable.click();
+    ok('disable action asks for confirmation',
+       !doc.getElementById('confirmBackdrop').classList.contains('hidden'));
+    ok('confirmation lists the package being changed',
+       doc.getElementById('confirmTargets').textContent.includes('com.huawei.search'));
+    const startsBeforeCancel = calls.filter(c => c[0] === 'startAutomation').length;
+    autoDisable.click();
+    doc.getElementById('cancelActionBtn').click();
+    ok('cancel dismisses the modal without starting work',
+       calls.filter(c => c[0] === 'startAutomation').length === startsBeforeCancel);
+    autoDisable.click();
+    doc.getElementById('confirmActionBtn').click();
     await sleep(20);
-    ok('click starts automation with the right package',
+    ok('confirmed action starts automation with the right package',
        calls.some(c => c[0] === 'startAutomation' && c[1] === 'disable' && c[2] === 'com.huawei.search'));
   }
 
@@ -220,9 +240,24 @@ function banner() { return doc.getElementById('statusToast').textContent; }
   calls.length = 0;
   window.autoCleanTopCaches();
   await sleep(250);
-  ok('auto-clean runs after the scan completes',
+  ok('auto-clean asks for confirmation after scan',
+     !doc.getElementById('confirmBackdrop').classList.contains('hidden'));
+  doc.getElementById('confirmActionBtn').click();
+  await sleep(30);
+  ok('confirmed auto-clean starts with scanned packages',
      calls.some(c => c[0] === 'startAutomation' && c[1] === 'clear_cache' && c[2].includes('com.whatsapp')),
      JSON.stringify(calls.filter(c => c[0] === 'startAutomation')));
+
+  console.log('\n[6c] cache scan errors are not reported as empty caches');
+  cacheMode = 'error';
+  window.switchTab('cache');
+  await sleep(120);
+  ok('scan error is visible', /Storage stats unavailable/.test(doc.getElementById('cacheListContainer').textContent));
+  calls.length = 0;
+  window.autoCleanTopCaches();
+  await sleep(120);
+  ok('error does not start automation or ask for Usage Access',
+     !calls.some(c => c[0] === 'startAutomation' || (c[0] === 'openPerm' && c[1] === 'usage')));
   cacheMode = 'needs';
 
   console.log('\n[7] resume shows the run summary once');
@@ -252,6 +287,19 @@ function banner() { return doc.getElementById('statusToast').textContent; }
   window.clearTimeout = realClear;
   ok('second banner cancels the first timer', cleared >= 1, 'clearTimeout calls: ' + cleared);
   ok('latest banner text wins', banner() === 'second', banner());
+
+  console.log('\n[9] system font scale can be restored');
+  window.restoreFontScale();
+  ok('restore action reaches native bridge', calls.some(c => c[0] === 'restoreOriginalFontScale'));
+  ok('restore action confirms previous value', /previous system text scale/.test(banner()));
+
+  console.log('\n[10] unsupported device gate is explained');
+  native.__supportedDevice = false;
+  window.refreshDashboard();
+  ok('dashboard warns this is the wrong model', /automation is disabled/i.test(banner()), banner());
+  window.startAutomation('disable', ['com.huawei.search']);
+  doc.getElementById('confirmActionBtn').click();
+  ok('bridge rejection explains the supported target', /ANE-LX1/.test(banner()), banner());
 
   console.log('\n----------------------------------------');
   console.log(`  ${pass} passed, ${fail} failed`);
