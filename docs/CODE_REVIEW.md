@@ -1,8 +1,14 @@
 # AnneControl (P20 Lite) — Code Review
 
 **Scope:** `anne-control-apk/` (Java + WebView UI), `ci_build.py`, `.github/workflows/`, `AndroidManifest.xml`
-**Commit reviewed:** `ad9e9ef` ("Fix accessibility leaks, multilingual support, auto-publish APK release & prevent background app reloads")
-**Reviewer note:** findings below are ordered by *user-facing risk*, not by file. Line numbers refer to the reviewed commit.
+**Historical review baseline:** `ad9e9ef` ("Fix accessibility leaks, multilingual support, auto-publish APK release & prevent background app reloads").
+
+> This document records findings and decisions from earlier commits. Its line numbers and
+> some statements (including the original signing-key decision and test status) are stale.
+> Read section 10 for the current follow-up review and implemented changes; the earlier
+> sections are retained as project history, not as a description of current code.
+
+**Original reviewer note:** findings below were ordered by user-facing risk. Line numbers refer to the historical commit.
 
 ---
 
@@ -403,7 +409,7 @@ adb shell pm grant com.annecontrol.p20lite android.permission.WRITE_SECURE_SETTI
 
 ## 6. Testing & maintainability (the structural gap)
 
-There is **no test of any kind**, and the most bug-prone code is the least testable. The good news: `AutomationEngine`'s *policy* is almost pure — extract it and it becomes trivially unit-testable on the JVM with no emulator:
+At this historical review point there was **no test of any kind**. The most bug-prone code was also the least testable. The subsequent QueuePlanner extraction and UI suite are documented in the later sections.
 
 ```java
 // new: pure, no Handler / no Context
@@ -477,7 +483,7 @@ android:versionCode="102"   <!-- bump with every published build -->
 
 ---
 
-*Reviewed files:* `AndroidManifest.xml` (52 L), `res/xml/accessibility_service_config.xml` (9 L), `MainActivity.java` (68 L), `SystemBridge.java` (688 L), `AnneAccessibilityService.java` (323 L), `AutomationEngine.java` (182 L), `HuaweiCatalog.java` (97 L), `assets/index.html` (889 L), `ci_build.py` (180 L), `build-annecontrol-apk.yml` (57 L). No tests exist in the repository.
+*Historical inventory:* file lengths and test status above describe the reviewed commit only; the repository now includes JVM and jsdom UI tests.
 
 ---
 
@@ -564,3 +570,38 @@ as apksigner's "keystore password was incorrect". It is now skipped with a warni
 unless `RELEASE_STORE_PASSWORD` is set, and `resolve_keystore()` returns passwords
 explicitly instead of mutating the process environment (which made a second call
 behave differently from the first).
+
+---
+
+## 10. Current follow-up review and fixes
+
+The above signing decision has been superseded. The tracked keystore was removed from
+this checkout, build scripts now require a private key, and CI pins its certificate via
+the `ANNE_SIGNER_SHA256` repository variable. Signing secrets are injected only into the
+main-only build job; feature branches receive test jobs without signing material. The old
+key remains visible in Git history
+and must be treated as compromised. Rotating to a new key means existing installs signed
+with the exposed certificate must uninstall before installing the replacement.
+
+Other follow-up changes:
+
+* Automation verifies the action-specific confirmation text and verifies post-action
+  state before counting Force Stop, Disable, or Clear Cache as success. The Disable flow
+  no longer substitutes Force Stop when disabling is unavailable.
+* Empty filtered queues return a failed start result; cache scan errors and partial scans
+  are surfaced rather than presented as zero cache.
+* The ADB package-removal commands continue independently when one package is absent.
+* Settings automation is limited to Huawei ANE-LX1 / Android 9 (EMUI 9.1), the catalog's
+  intended device. Font-scale changes retain a restorable copy of the user's prior value.
+* Sweep language clarifies that process-kill requests are not Force Stop and may be
+  ignored or followed by app restart. The observed RAM delta is approximate.
+* UI text selection, touch targets, and search debounce were improved; keep-alive and
+  scope persistence failures are reported.
+* npm dependencies are lockfile-pinned and installed with `npm ci`; release write
+  permissions are isolated to the main-only publishing job.
+
+Remaining device validation: confirm Android/EMUI-specific dialog labels and whether
+cache/disable/force-stop controls expose the expected post-action states on a real
+ANE-LX1. `killBackgroundProcesses()` is only a request; this utility must not claim that
+it actually terminated a process. The jsdom tests do not emulate Android Settings or
+Accessibility behavior.

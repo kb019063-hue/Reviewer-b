@@ -281,6 +281,45 @@ public class AnneAccessibilityService extends AccessibilityService {
         return found[0];
     }
 
+    /**
+     * Dialog guard: require at least one action-specific phrase anywhere in the
+     * visible modal before selecting its positive button. Matching is normalised
+     * and substring-based because localized prompts add surrounding words.
+     */
+    private boolean windowContainsAnyText(AccessibilityNodeInfo root, final String[] candidates) {
+        final Set<String> wanted = new HashSet<String>();
+        for (int i = 0; i < candidates.length; i++) {
+            String n = normalize(candidates[i]);
+            if (n.length() > 0) wanted.add(n);
+        }
+        final boolean[] found = new boolean[] { false };
+        scanTree(root, new NodeVisitor() {
+            @Override
+            public boolean visit(AccessibilityNodeInfo node) {
+                CharSequence text = node.getText();
+                if (containsWanted(text, wanted)) {
+                    found[0] = true;
+                    return true;
+                }
+                if (containsWanted(node.getContentDescription(), wanted)) {
+                    found[0] = true;
+                    return true;
+                }
+                return false;
+            }
+        });
+        return found[0];
+    }
+
+    private boolean containsWanted(CharSequence value, Set<String> wanted) {
+        if (value == null) return false;
+        String n = normalize(value.toString());
+        for (String candidate : wanted) {
+            if (n.contains(candidate)) return true;
+        }
+        return false;
+    }
+
     /** Visitor for {@link #scanTree}; return true to stop the walk early. */
     private interface NodeVisitor {
         boolean visit(AccessibilityNodeInfo node);
@@ -351,10 +390,21 @@ public class AnneAccessibilityService extends AccessibilityService {
                 try {
                     if (performClick(confirmBtn)) {
                         lastActionTimeMs = System.currentTimeMillis();
-                        engine.markPackageSuccessAndAdvance();
+                        engine.setStep(AutomationEngine.STEP_VERIFY_FORCE_STOP);
                     }
                 } finally {
                     confirmBtn.recycle();
+                }
+            }
+        } else if (step == AutomationEngine.STEP_VERIFY_FORCE_STOP) {
+            AccessibilityNodeInfo btn = findClickableByLabels(root, LABELS_FORCE_STOP, true);
+            if (btn != null) {
+                try {
+                    if (!btn.isEnabled()) {
+                        engine.markPackageSuccessAndAdvance();
+                    }
+                } finally {
+                    btn.recycle();
                 }
             }
         }
@@ -371,30 +421,20 @@ public class AnneAccessibilityService extends AccessibilityService {
             }
 
             AccessibilityNodeInfo disableBtn = findClickableByLabels(root, LABELS_DISABLE, true);
-            if (disableBtn != null) {
-                try {
-                    if (disableBtn.isEnabled() && performClick(disableBtn)) {
-                        lastActionTimeMs = System.currentTimeMillis();
-                        engine.setStep(AutomationEngine.STEP_WAIT_CONFIRM_DIALOG);
-                        return;
-                    }
-                } finally {
-                    disableBtn.recycle();
-                }
+            if (disableBtn == null) {
+                // Keep waiting for the page's controls to finish rendering; the step timeout
+                // will report failure without substituting a different operation.
+                return;
             }
-
-            // Fallback: If EMUI grays out Disable on a stub, fall back to Force Stop
-            AccessibilityNodeInfo forceBtn = findClickableByLabels(root, LABELS_FORCE_STOP, true);
-            if (forceBtn != null) {
-                try {
-                    if (forceBtn.isEnabled() && performClick(forceBtn)) {
-                        lastActionTimeMs = System.currentTimeMillis();
-                        engine.setStep(AutomationEngine.STEP_WAIT_CONFIRM_DIALOG);
-                        return;
-                    }
-                } finally {
-                    forceBtn.recycle();
+            try {
+                if (!disableBtn.isEnabled()) {
+                    engine.markPackageFailedAndAdvance("Disable is unavailable; no fallback action was taken");
+                } else if (performClick(disableBtn)) {
+                    lastActionTimeMs = System.currentTimeMillis();
+                    engine.setStep(AutomationEngine.STEP_WAIT_CONFIRM_DIALOG);
                 }
+            } finally {
+                disableBtn.recycle();
             }
         } else if (step == AutomationEngine.STEP_WAIT_CONFIRM_DIALOG) {
             AccessibilityNodeInfo confirmBtn = findDialogConfirmButton(root, engine.getMode());
@@ -402,34 +442,44 @@ public class AnneAccessibilityService extends AccessibilityService {
                 try {
                     if (performClick(confirmBtn)) {
                         lastActionTimeMs = System.currentTimeMillis();
-                        engine.markPackageSuccessAndAdvance();
+                        engine.setStep(AutomationEngine.STEP_VERIFY_DISABLE);
                     }
                 } finally {
                     confirmBtn.recycle();
                 }
+            }
+        } else if (step == AutomationEngine.STEP_VERIFY_DISABLE) {
+            AccessibilityNodeInfo enableBtn = findClickableByLabels(root, LABELS_ENABLE, true);
+            if (enableBtn != null) {
+                enableBtn.recycle();
+                engine.markPackageSuccessAndAdvance();
             }
         }
     }
 
     private void handleClearCache(AccessibilityNodeInfo root, AutomationEngine engine, int step) {
         if (step != AutomationEngine.STEP_WAIT_APP_INFO
-                && step != AutomationEngine.STEP_WAIT_STORAGE_SCREEN) {
+                && step != AutomationEngine.STEP_WAIT_STORAGE_SCREEN
+                && step != AutomationEngine.STEP_VERIFY_CACHE) {
             return;
         }
 
-        // "Clear cache" is visible on the Storage sub-page (or on some EMUI builds
-        // directly on App info).
         AccessibilityNodeInfo clearCacheBtn = findClickableByLabels(root, LABELS_CLEAR_CACHE, true);
         if (clearCacheBtn != null) {
             try {
+                if (step == AutomationEngine.STEP_VERIFY_CACHE) {
+                    if (!clearCacheBtn.isEnabled()) {
+                        engine.markPackageSuccessAndAdvance();
+                    }
+                    return;
+                }
                 if (!clearCacheBtn.isEnabled()) {
-                    // Cache already empty.
                     engine.markPackageSkippedAndAdvance();
                     return;
                 }
                 if (performClick(clearCacheBtn)) {
                     lastActionTimeMs = System.currentTimeMillis();
-                    engine.markPackageSuccessAndAdvance();
+                    engine.setStep(AutomationEngine.STEP_VERIFY_CACHE);
                 }
             } finally {
                 clearCacheBtn.recycle();
@@ -538,6 +588,18 @@ public class AnneAccessibilityService extends AccessibilityService {
      * "Force stop"/"Disable" instead of "OK".
      */
     private AccessibilityNodeInfo findDialogConfirmButton(AccessibilityNodeInfo root, String mode) {
+        String[] actionLabels;
+        if (AutomationEngine.MODE_FORCE_STOP.equals(mode)) {
+            actionLabels = LABELS_FORCE_STOP;
+        } else if (AutomationEngine.MODE_DISABLE.equals(mode)) {
+            actionLabels = LABELS_DISABLE;
+        } else {
+            return null;
+        }
+        // A generic button1/OK is not enough: require the modal itself to mention
+        // the action we just requested before confirming it.
+        if (!windowContainsAnyText(root, actionLabels)) return null;
+
         AccessibilityNodeInfo byId = findClickableByViewId(root, "android:id/button1");
         if (byId != null) return byId;
 

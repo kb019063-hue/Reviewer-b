@@ -50,6 +50,9 @@ public class AutomationEngine {
     public static final int STEP_WAIT_CONFIRM_DIALOG = 2;
     public static final int STEP_WAIT_STORAGE_SCREEN = 3;
     public static final int STEP_DONE_PACKAGE = 4;
+    public static final int STEP_VERIFY_FORCE_STOP = 5;
+    public static final int STEP_VERIFY_DISABLE = 6;
+    public static final int STEP_VERIFY_CACHE = 7;
 
     // Outcomes reported by the accessibility service
     public static final int OUTCOME_SUCCESS = QueuePlanner.OUTCOME_SUCCESS;
@@ -71,6 +74,7 @@ public class AutomationEngine {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final List<String> labels = new ArrayList<String>();
+    private final List<String> failureDetails = new ArrayList<String>();
 
     private QueuePlanner plan = new QueuePlanner(Collections.<String>emptyList(), true);
     private String mode = MODE_NONE;
@@ -87,7 +91,7 @@ public class AutomationEngine {
         public void run() {
             synchronized (AutomationEngine.this) {
                 if (!running) return;
-                advanceInternal(OUTCOME_FAILED, "timed out waiting for the Settings screen");
+                advanceInternal(OUTCOME_FAILED, timeoutReason());
             }
         }
     };
@@ -106,6 +110,7 @@ public class AutomationEngine {
 
         this.appContext = ctx.getApplicationContext();
         this.plan = new QueuePlanner(packages, !MODE_CLEAR_CACHE.equals(requestedMode));
+        this.failureDetails.clear();
 
         this.labels.clear();
         List<String> packagesIn = plan.packages();
@@ -263,10 +268,25 @@ public class AutomationEngine {
         returnToApp();
     }
 
-    private void advanceInternal(int outcome, String detail) {
+    private String timeoutReason() {
+        if (step == STEP_VERIFY_FORCE_STOP || step == STEP_VERIFY_DISABLE || step == STEP_VERIFY_CACHE) {
+            return "Settings did not show the expected post-action state";
+        }
+        if (step == STEP_WAIT_CONFIRM_DIALOG) {
+            return "No matching action confirmation was found";
+        }
+        return "Timed out waiting for the expected Settings control";
+    }
+
+    private synchronized void advanceInternal(int outcome, String detail) {
         if (!running) return;
         handler.removeCallbacksAndMessages(null);
 
+        String current = plan.current();
+        if (outcome == OUTCOME_FAILED && detail != null && detail.length() > 0 && current != null
+                && failureDetails.size() < 5) {
+            failureDetails.add(current + ": " + detail);
+        }
         plan.completeCurrent(outcome);
 
         // Leave the current App info page behind so the next intent cannot open on
@@ -292,11 +312,23 @@ public class AutomationEngine {
         }, NAV_SETTLE_MS);
     }
 
+    private String summaryWithFailureDetails() {
+        String summary = plan.summary();
+        if (failureDetails.isEmpty()) return summary;
+        StringBuilder out = new StringBuilder(summary).append(" Issues: ");
+        for (int i = 0; i < failureDetails.size(); i++) {
+            if (i > 0) out.append("; ");
+            out.append(failureDetails.get(i));
+        }
+        if (plan.failures() > failureDetails.size()) out.append("; additional failures omitted");
+        return out.toString();
+    }
+
     private void finishRun() {
         running = false;
         mode = MODE_NONE;
         setStepInternal(STEP_IDLE);
-        lastSummary = plan.summary();
+        lastSummary = summaryWithFailureDetails();
         statusMessage = lastSummary;
         cancelNotification();
         returnToApp();

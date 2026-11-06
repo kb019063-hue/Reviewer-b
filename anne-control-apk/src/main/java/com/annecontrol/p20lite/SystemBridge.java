@@ -68,6 +68,13 @@ public class SystemBridge {
         this.webView = webView;
     }
 
+    private boolean isSupportedDevice() {
+        String model = Build.MODEL == null ? "" : Build.MODEL.toUpperCase(java.util.Locale.US);
+        return "HUAWEI".equalsIgnoreCase(Build.MANUFACTURER)
+                && model.contains("ANE-LX1")
+                && Build.VERSION.SDK_INT == 28;
+    }
+
     public boolean hasUsageAccess() {
         try {
             AppOpsManager appOps = (AppOpsManager) ctx.getSystemService(Context.APP_OPS_SERVICE);
@@ -132,7 +139,8 @@ public class SystemBridge {
             JSONObject root = new JSONObject();
 
             // Hardware & Build info
-            root.put("model", Build.MODEL != null ? Build.MODEL : "ANE-LX1");
+            root.put("model", Build.MODEL != null ? Build.MODEL : "Unknown");
+            root.put("supportedDevice", isSupportedDevice());
             root.put("manufacturer", Build.MANUFACTURER != null ? Build.MANUFACTURER : "HUAWEI");
             root.put("displayBuild", Build.DISPLAY != null ? Build.DISPLAY : "EMUI 9.1");
             root.put("hardware", Build.HARDWARE != null ? Build.HARDWARE : "hi6250");
@@ -567,13 +575,15 @@ public class SystemBridge {
             PackageManager pm = ctx.getPackageManager();
             StorageStatsManager ssm = (StorageStatsManager) ctx.getSystemService(Context.STORAGE_STATS_SERVICE);
             if (ssm == null) {
-                return "{\"needsUsageAccess\":true,\"items\":[]}";
+                return "{\"needsUsageAccess\":false,\"error\":true,\"message\":\"Storage stats service unavailable\",\"items\":[]}";
             }
 
             List<ApplicationInfo> apps = pm.getInstalledApplications(0);
             List<CacheItem> items = new ArrayList<CacheItem>();
             long allCacheBytes = 0L;
             int scanned = 0;
+            int failedQueries = 0;
+            int processed = 0;
 
             int totalCandidates = 0;
             for (int i = 0; i < apps.size(); i++) {
@@ -594,10 +604,6 @@ public class SystemBridge {
                             android.os.Process.myUserHandle()
                     );
                     scanned++;
-                    if (scanned % 8 == 0) {
-                        postJs("window.onScanProgress && window.onScanProgress('cache',"
-                                + scanned + "," + totalCandidates + ")");
-                    }
                     long cb = st.getCacheBytes();
                     // Total counts every scanned app, so the headline figure is not
                     // silently limited to the apps large enough to list below.
@@ -611,7 +617,17 @@ public class SystemBridge {
                         items.add(ci);
                     }
                 } catch (Exception ignored) {
+                    failedQueries++;
                 }
+                processed++;
+                if (processed % 8 == 0 || processed == totalCandidates) {
+                    postJs("window.onScanProgress && window.onScanProgress('cache',"
+                            + processed + "," + totalCandidates + ")");
+                }
+            }
+
+            if (scanned == 0 && totalCandidates > 0) {
+                return "{\"needsUsageAccess\":false,\"error\":true,\"message\":\"Could not read cache sizes. Check Usage Access and retry.\",\"items\":[]}";
             }
 
             Collections.sort(items, new Comparator<CacheItem>() {
@@ -637,12 +653,14 @@ public class SystemBridge {
             out.put("needsUsageAccess", false);
             out.put("totalCacheMb", round1(allCacheBytes / 1048576.0));
             out.put("scannedApps", scanned);
+            out.put("failedApps", failedQueries);
             out.put("items", arr);
             cachedCacheJson = out.toString();
             lastCacheScanTime = now;
             return cachedCacheJson;
         } catch (Exception e) {
-            return "{\"needsUsageAccess\":false,\"totalCacheMb\":0,\"items\":[]}";
+            return "{\"needsUsageAccess\":false,\"error\":true,\"message\":\""
+                    + safeJson(e.getMessage()) + "\",\"items\":[]}";
         }
     }
 
@@ -722,6 +740,9 @@ public class SystemBridge {
                 && !AutomationEngine.MODE_CLEAR_CACHE.equals(mode)) {
             return "{\"ok\":false,\"message\":\"Unsupported automation mode.\"}";
         }
+        if (!isSupportedDevice()) {
+            return "{\"ok\":false,\"unsupportedDevice\":true,\"message\":\"Automation is limited to Huawei ANE-LX1 running Android 9 / EMUI 9.1.\"}";
+        }
         if (!hasAccessibilityEnabled()) {
             boolean listed = isAccessibilityListedInSettings();
             if (listed) {
@@ -746,10 +767,14 @@ public class SystemBridge {
             if (p.length() > 0 && !list.contains(p)) list.add(p);
         }
 
-        AutomationEngine.get().start(ctx, mode, list);
         AutomationEngine engine = AutomationEngine.get();
-        return "{\"ok\":true,\"queued\":" + engine.getTotalCount()
-                + ",\"running\":" + engine.isRunning() + "}";
+        engine.start(ctx, mode, list);
+        int queued = engine.getTotalCount();
+        if (!engine.isRunning()) {
+            return "{\"ok\":false,\"queued\":" + queued + ",\"running\":false,\"message\":\""
+                    + safeJson(engine.getStatusMessage()) + "\"}";
+        }
+        return "{\"ok\":true,\"queued\":" + queued + ",\"running\":true}";
     }
 
     @JavascriptInterface
@@ -810,6 +835,9 @@ public class SystemBridge {
             }
             if (scale < 0.80f) scale = 0.80f;
             if (scale > 1.25f) scale = 1.25f;
+            float current = Settings.System.getFloat(
+                    ctx.getContentResolver(), Settings.System.FONT_SCALE, 1.0f);
+            Prefs.rememberOriginalFontScale(ctx, current);
             boolean written = Settings.System.putFloat(
                     ctx.getContentResolver(), Settings.System.FONT_SCALE, scale);
             if (!written) {
@@ -820,6 +848,34 @@ public class SystemBridge {
                     + "unlock or reboot.");
             return true;
         } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @JavascriptInterface
+    public boolean restoreOriginalFontScale() {
+        if (!hasWriteSettings()) {
+            openPermissionScreen("write_settings");
+            showToast("Allow AnneControl to modify system settings, then try again.");
+            return false;
+        }
+        if (!Prefs.hasOriginalFontScale(ctx)) {
+            showToast("No previous text scale was saved by AnneControl.");
+            return false;
+        }
+        try {
+            float original = Prefs.originalFontScale(ctx, 1.0f);
+            boolean written = Settings.System.putFloat(
+                    ctx.getContentResolver(), Settings.System.FONT_SCALE, original);
+            if (!written) {
+                showToast("Android rejected the text-scale restore.");
+                return false;
+            }
+            Prefs.clearOriginalFontScale(ctx);
+            showToast("Restored your previous system text scale to " + original + "x.");
+            return true;
+        } catch (Exception e) {
+            showToast("Could not restore text scale.");
             return false;
         }
     }

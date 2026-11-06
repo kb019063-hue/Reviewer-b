@@ -5,17 +5,11 @@ Uses official Android SDK build-tools (aapt2, javac, d8, zipalign, apksigner).
 
 Signing
 -------
-Android refuses to update an installed app whose signing certificate changed, so
-the release key must survive between builds. This script therefore:
-
-  1. restores the keystore from ANNE_SIGNING_KEY / RELEASE_KEYSTORE_B64 if set;
-  2. otherwise reuses a private ./keystore/annecontrol-release.jks if it exists;
-  3. otherwise uses the committed signing/annecontrol.keystore (the default here,
-     so that CI and local builds share one signature);
-  4. only then falls back to generating a throwaway key, and says so loudly.
-
-Passwords come from RELEASE_STORE_PASSWORD / RELEASE_KEY_PASSWORD and are handed to
-apksigner via `env:` so they never appear on the command line or in logs.
+A persistent private key must be supplied through ANNE_SIGNING_KEY,
+RELEASE_KEYSTORE_B64, or a local ignored keystore. There is no committed-key or
+throwaway-key fallback: either would make a published APK unsafe or non-updatable.
+CI also requires ANNE_SIGNER_SHA256 to pin the expected signing certificate.
+Passwords are passed to apksigner through env: references.
 """
 import base64
 import os
@@ -36,24 +30,8 @@ TEST_SRC = PROJECT_DIR / "test" / "java"
 # Classes with no Android imports, so they can be compiled and run on a plain JVM.
 PURE_JAVA = ("HuaweiCatalog.java", "QueuePlanner.java")
 KEYSTORE_DIR = REPO_ROOT / "keystore"
-# Signing identity shared through the repository, the same way a committed
-# debug.keystore works in a Gradle project: every build (CI included) signs with
-# this one key, so APKs install as upgrades. Its password is public too - that is
-# what "committed key" means. See README "Signing" for the trade-off and for the
-# private-key alternative (ANNE_SIGNING_KEY), which takes precedence when set.
-SIGNING_DIR = PROJECT_DIR / "signing"
-COMMITTED_KEYSTORE = SIGNING_DIR / "annecontrol.keystore"
-COMMITTED_STORE_PASSWORD = "23Spq3Q8UDnLcoXUpRG5m3GA"
-COMMITTED_KEY_PASSWORD = "23Spq3Q8UDnLcoXUpRG5m3GA"
-# Certificate digest of the committed key. Guarded at the end of every build: if an
-# APK ever comes out signed by anything else, installed copies could no longer be
-# updated, and that must fail the build instead of shipping quietly.
-EXPECTED_SIGNER_SHA256 = "c264cf3d7e1f8eabd20ae0b9f3a732f3a34315b4a352367285872e88d16f3c29"
 KEYSTORE_FILE = KEYSTORE_DIR / "annecontrol-release.jks"
-
 KEY_ALIAS = "annecontrol"
-# Only used for keys this script generates itself (never for a published build).
-THROWAWAY_PASS = "annecontrol2026"
 
 
 def run(cmd: list, show_stderr: bool = False):
@@ -137,17 +115,9 @@ def run_unit_tests():
 
 
 def resolve_keystore():
-    """
-    Returns (path, is_persistent, passwords).
-
-    `passwords` is None when apksigner should take them from the environment
-    (secret/local-key cases) or use the throwaway default, and a (store, key)
-    tuple for the committed key, whose password is public anyway.
-    """
+    """Restore or locate a private keystore; never create or use a public key."""
     KEYSTORE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Single-secret form, for people who would rather paste once than three times:
-    #   "<base64 keystore>|<password>"  or  "<base64 keystore>|<storepass>|<keypass>"
     combined = os.environ.get("ANNE_SIGNING_KEY", "").strip()
     if combined:
         parts = combined.split("|")
@@ -158,8 +128,6 @@ def resolve_keystore():
             blob = base64.b64decode(parts[0], validate=True)
         except Exception as exc:
             sys.exit(f"ERROR: ANNE_SIGNING_KEY does not start with valid base64: {exc}")
-        # A truncated or re-encoded paste otherwise fails much later with a
-        # confusing "keystore password was incorrect" from apksigner.
         if len(blob) < 512 or not (blob[:2] == b"\x30\x82" or blob[:4] == b"\xfe\xed\xfe\xed"):
             sys.exit("ERROR: ANNE_SIGNING_KEY does not look like a JKS/PKCS12 keystore "
                      f"({len(blob)} bytes decoded). Re-copy the whole line.")
@@ -169,88 +137,57 @@ def resolve_keystore():
             os.environ["RELEASE_STORE_PASSWORD"] = parts[1]
         if not os.environ.get("RELEASE_KEY_PASSWORD"):
             os.environ["RELEASE_KEY_PASSWORD"] = parts[-1]
-        # (env vars only: apksigner is invoked with env: references, never literals)
-        print(f"Restored release keystore from ANNE_SIGNING_KEY -> {KEYSTORE_FILE}")
-        return KEYSTORE_FILE, True, None
+        print("Restored private release keystore from ANNE_SIGNING_KEY")
+        return KEYSTORE_FILE
 
     encoded = os.environ.get("RELEASE_KEYSTORE_B64", "").strip()
     if encoded:
-        KEYSTORE_FILE.write_bytes(base64.b64decode(encoded))
-        print(f"Restored release keystore from RELEASE_KEYSTORE_B64 -> {KEYSTORE_FILE}")
-        return KEYSTORE_FILE, True, None
+        try:
+            KEYSTORE_FILE.write_bytes(base64.b64decode(encoded, validate=True))
+        except Exception as exc:
+            sys.exit(f"ERROR: RELEASE_KEYSTORE_B64 is invalid: {exc}")
+        os.chmod(KEYSTORE_FILE, 0o600)
+        print("Restored private release keystore from RELEASE_KEYSTORE_B64")
+        return KEYSTORE_FILE
 
-    if KEYSTORE_FILE.exists():
-        # Only honour a private local key when we also know its password; otherwise
-        # signing would fail later with a confusing "password was incorrect".
-        if os.environ.get("RELEASE_STORE_PASSWORD"):
-            print(f"Reusing existing release keystore at {KEYSTORE_FILE}")
-            return KEYSTORE_FILE, True, None
-        print(f"::warning::Ignoring {KEYSTORE_FILE}: RELEASE_STORE_PASSWORD is not set. "
-              "Falling back to the committed signing key.")
+    if KEYSTORE_FILE.exists() and os.environ.get("RELEASE_STORE_PASSWORD"):
+        print(f"Using ignored local private keystore: {KEYSTORE_FILE}")
+        return KEYSTORE_FILE
 
-    if COMMITTED_KEYSTORE.exists():
-        print(f"Using the committed signing key at {COMMITTED_KEYSTORE}")
-        return COMMITTED_KEYSTORE, True, (COMMITTED_STORE_PASSWORD, COMMITTED_KEY_PASSWORD)
-
-    print("::warning::No release keystore provided - generating a THROWAWAY key. "
-          "APKs built with it cannot be installed over ones signed with a different key. "
-          "Commit a signing key at anne-control-apk/signing/annecontrol.keystore "
-          "or add the ANNE_SIGNING_KEY repository secret (see README.md).")
-    run([
-        "keytool", "-genkeypair",
-        "-keystore", KEYSTORE_FILE,
-        "-storepass", THROWAWAY_PASS,
-        "-keypass", THROWAWAY_PASS,
-        "-alias", KEY_ALIAS,
-        "-keyalg", "RSA",
-        "-keysize", "2048",
-        "-validity", "10000",
-        "-dname", "CN=AnneControl, OU=HuaweiP20Lite, O=AnneControl, C=GH",
-    ])
-    return KEYSTORE_FILE, False, None
+    sys.exit("ERROR: no private signing key supplied. Configure ANNE_SIGNING_KEY or "
+             "RELEASE_KEYSTORE_B64 + passwords, or provide ignored keystore/annecontrol-release.jks "
+             "and RELEASE_STORE_PASSWORD. Never commit the keystore.")
 
 
-def signing_password_args(passwords=None):
-    """apksigner password flags; secrets go via env: so they stay out of logs."""
-    if passwords is not None:
-        store, key = passwords
-        # The committed key's password is published in this file, so passing it on
-        # the command line exposes nothing that is not already public.
-        return ["--ks-pass", f"pass:{store}", "--key-pass", f"pass:{key}"]
-    if os.environ.get("RELEASE_STORE_PASSWORD"):
-        store = ["--ks-pass", "env:RELEASE_STORE_PASSWORD"]
-    else:
-        store = ["--ks-pass", f"pass:{THROWAWAY_PASS}"]
-    if os.environ.get("RELEASE_KEY_PASSWORD"):
-        key = ["--key-pass", "env:RELEASE_KEY_PASSWORD"]
-    else:
-        key = ["--key-pass", f"pass:{THROWAWAY_PASS}"]
-    return store + key
+def signing_password_args():
+    """apksigner password flags; passwords are passed via env: and stay out of logs."""
+    if not os.environ.get("RELEASE_STORE_PASSWORD"):
+        sys.exit("ERROR: RELEASE_STORE_PASSWORD is required")
+    if not os.environ.get("RELEASE_KEY_PASSWORD"):
+        os.environ["RELEASE_KEY_PASSWORD"] = os.environ["RELEASE_STORE_PASSWORD"]
+    return ["--ks-pass", "env:RELEASE_STORE_PASSWORD", "--key-pass", "env:RELEASE_KEY_PASSWORD"]
 
 
 def assert_signer(verify_output, expected_hex):
-    """The APK must carry the committed certificate, or upgrades break silently."""
-    # apksigner words this differently across build-tools versions ("Signer #1
-    # certificate SHA-256 digest" vs "V3.0 Signer: certificate SHA-256 digest"), and
-    # "public key SHA-256 digest" is a different value - match the certificate only.
+    """Pin the APK signer certificate so a wrong key cannot silently ship."""
     match = re.search(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", verify_output)
     if not match:
         tail = " | ".join(verify_output.strip().splitlines()[:12])
         sys.exit("ERROR: could not read the signer certificate from apksigner output: " + tail)
     actual = match.group(1).replace(":", "").lower()
-    if actual != expected_hex:
-        sys.exit(
-            "ERROR: APK is signed by\n  " + actual + "\nbut the committed key is\n  "
-            + expected_hex + "\nA different certificate means installed copies cannot be "
-            "updated (Android refuses the upgrade). If the key was rotated on purpose, "
-            "update EXPECTED_SIGNER_SHA256 and expect one uninstall."
-        )
-    print(f"Signer matches the committed key: {actual[:16]}...")
+    expected = expected_hex.replace(":", "").lower()
+    if actual != expected:
+        sys.exit("ERROR: APK signer digest does not match ANNE_SIGNER_SHA256. "
+                 "Check that the configured private key and expected digest belong together.")
+    print(f"Signer matches the configured private key: {actual[:16]}...")
 
 
 def main():
-    # Fast-fail on logic regressions before touching the Android toolchain.
+    # Fast-fail on logic or signing configuration before expensive Android work.
     run_unit_tests()
+    keystore = resolve_keystore()
+    if os.environ.get("GITHUB_ACTIONS") == "true" and not os.environ.get("ANNE_SIGNER_SHA256", "").strip():
+        sys.exit("ERROR: set the ANNE_SIGNER_SHA256 repository variable before building in CI")
 
     bt, android_jar = find_sdk_tools()
     aapt2 = bt / "aapt2"
@@ -323,12 +260,11 @@ def main():
     run([zipalign, "-f", "-p", "4", unaligned_apk, aligned_apk])
 
     # 7. Sign (v1 + v2 + v3 for Huawei Android 9 compatibility)
-    keystore, persistent, passwords = resolve_keystore()
     run([
         apksigner, "sign",
         "--ks", keystore,
         "--ks-key-alias", KEY_ALIAS,
-        *signing_password_args(passwords),
+        *signing_password_args(),
         "--v1-signing-enabled", "true",
         "--v2-signing-enabled", "true",
         "--v3-signing-enabled", "true",
@@ -344,15 +280,18 @@ def main():
     # 8. Verify APK signature & print badging summary
     verify_out = run([apksigner, "verify", "--verbose", "--print-certs", FINAL_APK])
     print(verify_out)
-    if persistent and keystore == COMMITTED_KEYSTORE:
-        assert_signer(verify_out, EXPECTED_SIGNER_SHA256)
+    expected_signer = os.environ.get("ANNE_SIGNER_SHA256", "").strip()
+    if expected_signer:
+        assert_signer(verify_out, expected_signer)
+    elif os.environ.get("GITHUB_ACTIONS") == "true":
+        sys.exit("ERROR: set the ANNE_SIGNER_SHA256 repository variable to the private key's "
+                 "certificate SHA-256 digest before building in CI")
+    else:
+        print("::warning::ANNE_SIGNER_SHA256 is not set; signer was verified by apksigner "
+              "but not pinned to an expected certificate.")
     badging_out = run([aapt2, "dump", "badging", FINAL_APK])
     print(badging_out)
     print(f"Built signed APK: {FINAL_APK} ({FINAL_APK.stat().st_size} bytes)")
-    print(f"Signing key persistent: {persistent}")
-    if not persistent:
-        print("::warning::This build was signed with a throwaway key - existing installs "
-              "will refuse to update to it.")
 
 
 def _report_failure(code):

@@ -7,19 +7,56 @@ on:
       - "main"
   workflow_dispatch:
 
-# Two pushes in a row used to race on the same `latest-apk` release tag: the second
-# job could fail with 422 "already_exists" or overwrite the asset while someone was
-# downloading it.
 concurrency:
   group: apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-apk:
-    name: Build & Sign AnneControl APK (Android 9 / ANE-LX1)
+  test:
+    name: Run UI and JVM tests
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: UI regression tests
+        working-directory: test/ui
+        run: |
+          npm ci --no-fund --no-audit
+          npm test
+
+      - name: Queue planner JVM tests
+        run: |
+          mkdir -p /tmp/annecontrol-unit-tests
+          javac -encoding UTF-8 -Xlint:all,-options \
+            -d /tmp/annecontrol-unit-tests \
+            anne-control-apk/src/main/java/com/annecontrol/p20lite/HuaweiCatalog.java \
+            anne-control-apk/src/main/java/com/annecontrol/p20lite/QueuePlanner.java \
+            anne-control-apk/test/java/com/annecontrol/p20lite/QueuePlannerTest.java
+          java -cp /tmp/annecontrol-unit-tests com.annecontrol.p20lite.QueuePlannerTest
+
+  # Signing material is only exposed to the trusted main build, never to arena/**
+  # feature-branch workflows. Feature branches still run the UI and JVM test job.
+  build-apk:
+    name: Build & Sign AnneControl APK (Android 9 / ANE-LX1)
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,30 +73,16 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-28" || true
           fi
 
-      - name: Set up Node (for the UI regression tests)
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: UI regression tests (jsdom, no device needed)
-        working-directory: test/ui
-        run: |
-          npm install --no-fund --no-audit
-          node ui_test.js
-
-      - name: Unit tests, then compile, align & sign AnneControl-P20Lite.apk
+      - name: Build, align, sign, and verify AnneControl APK
         env:
-          # Base64 of keystore/annecontrol-release.jks. Without it every build gets a
-          # fresh throwaway key and installed users can no longer update in place.
-          # One secret, one paste: "<base64 keystore>|<password>"
           ANNE_SIGNING_KEY: ${{ secrets.ANNE_SIGNING_KEY }}
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        # ci_build.py runs the JVM unit tests (QueuePlanner) first and aborts if they fail.
+          ANNE_SIGNER_SHA256: ${{ vars.ANNE_SIGNER_SHA256 }}
         run: python3 anne-control-apk/ci_build.py
 
-      - name: Upload AnneControl APK Artifact
+      - name: Upload AnneControl APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: AnneControl-P20Lite-APK
@@ -67,21 +90,32 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Only main publishes a public release: a feature-branch push must never move
-      # the `latest-apk` tag that users are downloading from.
+  publish-release:
+    name: Publish signed APK release
+    needs: build-apk
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: AnneControl-P20Lite-APK
+          path: dist
+
+      # Only this main-only job receives a write token.
       - name: Publish Direct-Download GitHub Release
         uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main'
         with:
           tag_name: latest-apk
           name: "AnneControl P20 Lite (Latest APK Direct Download)"
           body: |
-            ### 📱 AnneControl for Huawei P20 Lite (ANE-LX1 / EMUI 9.1)
-            Direct, 1-tap download for Android (no PC, unzip, or login required).
-            
-            - **Download File**: Tap `AnneControl-P20Lite.apk` below directly on your phone browser.
-            - **Installation**: Open the downloaded APK and tap **Install** (allow install from this source if prompted).
-            - **Cancelling a run**: an ongoing notification with a STOP action appears while the auto-cleaner drives Settings.
+            ### AnneControl for Huawei P20 Lite (ANE-LX1 / EMUI 9.1)
+            Direct APK download.
+
+            - Install the APK on the phone and allow installs from this source if prompted.
+            - Settings automation is supported only on ANE-LX1 / Android 9 (EMUI 9.1).
           files: dist/AnneControl-P20Lite.apk
           prerelease: false
           make_latest: true
