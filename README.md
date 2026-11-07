@@ -22,8 +22,8 @@ erase it from earlier Git history; treat that old certificate as compromised.
 signed with the exposed key. Those users must uninstall the old app and install the
 newly signed APK. Do this before distributing a replacement release.
 
-CI and local builds now refuse to generate or use a throwaway/committed key. Configure
-one private key using either:
+Release builds refuse to generate or use a throwaway/committed key. Configure one
+private key for updateable releases using either:
 
 1. GitHub Actions secret `ANNE_SIGNING_KEY`, a single line in the form
    `<base64-keystore>|<password>` or `<base64-keystore>|<store-password>|<key-password>`; or
@@ -39,6 +39,12 @@ new certificate's SHA-256 digest. CI fails if the built APK's certificate does n
 it. Generate and store the new key securely; never commit it or paste its private
 material into chat.
 
+For phone testing without release secrets, CI also produces a **test-only debug APK** on
+main-branch pushes. It is signed with a fresh one-run key and is never published as a
+release. Android will not allow a later test APK (or a release APK) to update an install
+signed by a different key. Uninstalling first may erase AnneControl's saved settings; export
+or record anything you need before replacing the app. A stable private key is still required
+for updateable releases.
 
 ## Building
 
@@ -46,14 +52,20 @@ The build uses the plain Android SDK tools directly (`aapt2`, `javac`, `d8`, `zi
 `apksigner`) — no Gradle.
 
 ```bash
-# requires ANDROID_HOME pointing at an SDK with build-tools + platforms/android-28
+# Stable-key release APK; requires the private release keystore and signer digest.
 python3 anne-control-apk/ci_build.py
 # -> dist/AnneControl-P20Lite.apk
+
+# Disposable test APK; creates a new temporary signing key for this run.
+python3 anne-control-apk/ci_build.py --debug-test
+# -> dist/AnneControl-P20Lite-Debug.apk
 ```
 
-CI (`.github/workflows/build-annecontrol-apk.yml`) runs the UI/JVM tests on `arena/**`
-and `main`; only `main` receives signing material, builds the APK, uploads the artifact,
-and publishes the `latest-apk` release.
+CI (`.github/workflows/build-annecontrol-apk.yml`) runs UI/JVM tests on `arena/**` and
+`main`. A main-branch push builds and uploads a test-only debug APK without release secrets.
+A manual run defaults to debug; select `release` only when the stable private signing key
+and signer-digest variable are configured. Only the release mode can publish the
+`latest-apk` release.
 
 ---
 
