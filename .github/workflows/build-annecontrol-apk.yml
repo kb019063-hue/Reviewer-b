@@ -6,6 +6,15 @@ on:
       - "arena/**"
       - "main"
   workflow_dispatch:
+    inputs:
+      build_mode:
+        description: "Choose a disposable test APK or a stable signed release"
+        required: true
+        type: choice
+        default: debug
+        options:
+          - debug
+          - release
 
 concurrency:
   group: apk-${{ github.ref }}
@@ -48,12 +57,12 @@ jobs:
             anne-control-apk/test/java/com/annecontrol/p20lite/QueuePlannerTest.java
           java -cp /tmp/annecontrol-unit-tests com.annecontrol.p20lite.QueuePlannerTest
 
-  # Signing material is only exposed to the trusted main build, never to arena/**
-  # feature-branch workflows. Feature branches still run the UI and JVM test job.
-  build-apk:
-    name: Build & Sign AnneControl APK (Android 9 / ANE-LX1)
+  # No secrets: an ephemeral signer creates a disposable test APK on main pushes.
+  # It is never published as a release and a later build cannot update it in place.
+  build-debug-apk:
+    name: Build test-only debug APK (ephemeral signer)
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.build_mode == 'debug')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,7 +82,42 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-28" || true
           fi
 
-      - name: Build, align, sign, and verify AnneControl APK
+      - name: Build, align, and sign disposable test APK
+        run: python3 anne-control-apk/ci_build.py --debug-test
+
+      - name: Upload test-only APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AnneControl-P20Lite-Debug-TEST-ONLY
+          path: dist/AnneControl-P20Lite-Debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+  # Release signing material is used only on an explicit main-branch release dispatch.
+  build-apk:
+    name: Build & Sign AnneControl release APK
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.build_mode == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install Android 9 (API 28) Platform SDK if needed
+        run: |
+          if [ ! -f "$ANDROID_HOME/platforms/android-28/android.jar" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-28" || true
+          fi
+
+      - name: Build, align, sign, and verify release APK
         env:
           ANNE_SIGNING_KEY: ${{ secrets.ANNE_SIGNING_KEY }}
           RELEASE_KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
@@ -82,7 +126,7 @@ jobs:
           ANNE_SIGNER_SHA256: ${{ vars.ANNE_SIGNER_SHA256 }}
         run: python3 anne-control-apk/ci_build.py
 
-      - name: Upload AnneControl APK artifact
+      - name: Upload signed release APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: AnneControl-P20Lite-APK
@@ -93,7 +137,7 @@ jobs:
   publish-release:
     name: Publish signed APK release
     needs: build-apk
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.build_mode == 'release'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -104,7 +148,7 @@ jobs:
           name: AnneControl-P20Lite-APK
           path: dist
 
-      # Only this main-only job receives a write token.
+      # Only this explicit main-only release job receives a write token.
       - name: Publish Direct-Download GitHub Release
         uses: softprops/action-gh-release@v2
         with:
