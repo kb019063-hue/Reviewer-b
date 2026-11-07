@@ -1,10 +1,13 @@
 # AnneControl — Huawei P20 Lite (ANE-LX1 / EMUI 9.1)
 
-An offline Android utility that de-bloats and tunes a Huawei P20 Lite without root or a
-PC: a curated bloatware catalog, a RAM sweep, a per-app cache scanner, and a hands-free
-"auto-cleaner" that drives the Settings UI through an Accessibility service.
+An offline Android utility for Huawei P20 Lite (ANE-LX1 / EMUI 9.1) maintenance and
+customization without root: a curated bloatware catalog, best-effort background-process
+requests, a per-app cache scanner, Settings automation through an Accessibility service,
+and user-mediated Huawei `.hwt` theme preview/import. Theme archives are inspected locally,
+shown using packaged preview artwork, copied only through Android's file/folder pickers,
+and must still be applied by Huawei Themes.
 
-No `INTERNET` permission — the app does not transmit data itself. User-initiated sharing or clipboard actions can pass selected text to other apps.
+No `INTERNET` permission — the app does not transmit data itself. The optional support report is generated on-device and includes model/build, app version, relevant permission states, Huawei Themes availability, and the last theme-package inspection. It excludes serial/IMEI, Android ID, contacts, personal files, and installed-app lists; it is shared only if the user chooses a target in Android's share sheet.
 
 ---
 

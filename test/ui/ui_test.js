@@ -90,10 +90,18 @@ const native = {
   consumeRunSummaryJson: () => JSON.stringify({ available: true, message: 'Done: 3 succeeded, 1 skipped, 0 failed of 4 apps.' }),
   openPermissionScreen: (t) => calls.push(['openPerm', t]),
   openAppInfo: (p) => calls.push(['openAppInfo', p]),
+  beginThemeFolderSelection: () => calls.push(['beginThemeFolderSelection']),
+  getSupportReportJson: () => JSON.stringify({
+    device: { manufacturer: 'HUAWEI', model: 'ANE-LX1', androidRelease: '9', emuiBuild: 'ANE-LX1 9.1.0' },
+    app: { versionName: '1.0.4', packageName: 'com.annecontrol.p20lite' },
+    themes: { managerInstalled: true, lastInspection: { themeName: 'Clarity 9', importStatus: 'preview_ready' } },
+    privacy: 'No serial, IMEI, Android ID, contacts, personal files, or installed-app list.'
+  }),
   setCompactFontScale: (scale) => { calls.push(['setCompactFontScale', scale]); return true; },
   restoreOriginalFontScale: () => { calls.push(['restoreOriginalFontScale']); return true; },
   invalidateScanCaches: () => calls.push(['invalidate']),
-  copyToClipboard: () => {}, shareText: () => {}, openDialerCode: () => {}
+  copyToClipboard: () => {}, shareText: (title, text) => calls.push(['shareText', title, text]), openDialerCode: () => {},
+  importHuaweiTheme: () => calls.push(['importHuaweiTheme'])
 };
 
 const vc = new VirtualConsole();
@@ -130,10 +138,58 @@ function banner() { return doc.getElementById('statusToast').textContent; }
   ok('RAM value rendered from bridge', doc.getElementById('ramAvailTxt').textContent === '1234 MB',
      doc.getElementById('ramAvailTxt').textContent);
   ok('model label rendered', doc.getElementById('topModelLabel').textContent.includes('ANE-LX1'));
+  ok('home explains it cannot repair EMUI or install updates',
+     /cannot repair EMUI bugs, install system updates/i.test(doc.querySelector('.hero-card').textContent));
+  ok('home does not claim elevated or system-level access',
+     !/elevated system access|direct system-level control|higher access switches/i.test(html));
+  ok('permission card explains Android still limits the app',
+     /not root or system-level access/i.test(doc.querySelectorAll('#tab-boost .card')[1].textContent));
   ok('stale accessibility shows "Restart service"',
      doc.getElementById('permAccBtn').textContent === 'Restart service',
      doc.getElementById('permAccBtn').textContent);
   ok('battery rendered', doc.getElementById('batLvlTxt').textContent === '82%');
+
+  console.log('\n[1b] Huawei theme import');
+  window.switchTab('themes');
+  ok('theme importer explains local .hwt selection',
+     /\.hwt/i.test(doc.getElementById('tab-themes').textContent));
+  ok('theme importer leaves final apply to Huawei Themes',
+     /you still confirm apply/i.test(doc.getElementById('tab-themes').textContent));
+  doc.getElementById('btnImportTheme').click();
+  ok('theme button starts native preview selection',
+     calls.some(c => c[0] === 'importHuaweiTheme'));
+  window.onThemePreview(JSON.stringify({
+    ok: true, fileName: 'Clarity9-EMUI91.hwt', fileBytes: 123456, themeName: 'Clarity 9',
+    version: '1.0.0', font: 'Clarity Sans', previewMime: 'image/png', previewImageBase64: 'aW1n',
+    checks: [{ name: 'HWT/ZIP readable', ok: true, detail: '12 entries checked' }],
+    notice: 'Structural scan only; not applied.'
+  }));
+  ok('preview card appears after local package inspection',
+     !doc.getElementById('themePreviewCard').classList.contains('hidden'));
+  ok('preview identifies the theme and selected archive',
+     /Clarity 9/.test(doc.getElementById('themePreviewName').textContent) &&
+     /Clarity9-EMUI91.hwt/.test(doc.getElementById('themePreviewMeta').textContent));
+  ok('preview uses packaged artwork, not HTML',
+     doc.getElementById('themePreviewImage').src.indexOf('data:image/png;base64,aW1n') === 0);
+  ok('structural check is rendered as text',
+     /HWT\/ZIP readable/.test(doc.getElementById('themeCheckList').textContent));
+  doc.getElementById('btnInstallTheme').click();
+  ok('import is gated behind preview and starts folder picker',
+     calls.some(c => c[0] === 'beginThemeFolderSelection'));
+  window.onThemeImportComplete();
+  ok('completion tells user to apply in Huawei Themes', /Huawei Themes/.test(banner()));
+
+  window.generateSupportReport();
+  ok('support report is shown locally',
+     !doc.getElementById('supportReportPanel').classList.contains('hidden') &&
+     /ANE-LX1/.test(doc.getElementById('supportReportText').textContent));
+  const supportReport = JSON.parse(doc.getElementById('supportReportText').textContent);
+  ok('report schema omits direct-identifier fields',
+     !('imei' in supportReport) && !('serial' in supportReport) && !('androidId' in supportReport));
+  doc.getElementById('btnShareReport').click();
+  ok('sharing is explicit and uses Android share sheet',
+     calls.some(c => c[0] === 'shareText' && /device and theme report/i.test(c[1])));
+  window.switchTab('boost');
 
   console.log('\n[2] honest sweep reporting');
   doc.getElementById('btnSweep').click();

@@ -239,6 +239,78 @@ public class SystemBridge {
         }
     }
 
+    /**
+     * A local, user-initiated troubleshooting report. Deliberately excludes
+     * Android ID, serial/IMEI, contacts, user files, and the installed-app list.
+     */
+    @JavascriptInterface
+    public String getSupportReportJson() {
+        try {
+            JSONObject root = new JSONObject();
+            JSONObject device = new JSONObject();
+            device.put("manufacturer", Build.MANUFACTURER == null ? "Unknown" : Build.MANUFACTURER);
+            device.put("model", Build.MODEL == null ? "Unknown" : Build.MODEL);
+            device.put("brand", Build.BRAND == null ? "Unknown" : Build.BRAND);
+            device.put("product", Build.PRODUCT == null ? "Unknown" : Build.PRODUCT);
+            device.put("androidRelease", Build.VERSION.RELEASE == null ? "Unknown" : Build.VERSION.RELEASE);
+            device.put("sdkInt", Build.VERSION.SDK_INT);
+            device.put("emuiBuild", Build.DISPLAY == null ? "Unknown" : Build.DISPLAY);
+            device.put("buildFingerprint", Build.FINGERPRINT == null ? "Unknown" : Build.FINGERPRINT);
+            device.put("securityPatch", Build.VERSION.SECURITY_PATCH == null ? "Unknown" : Build.VERSION.SECURITY_PATCH);
+            device.put("supportedAutomationTarget", isSupportedDevice());
+            root.put("device", device);
+
+            JSONObject app = new JSONObject();
+            try {
+                android.content.pm.PackageInfo own = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
+                app.put("versionName", own.versionName == null ? "Unknown" : own.versionName);
+                app.put("versionCode", Build.VERSION.SDK_INT >= 28 ? own.getLongVersionCode() : own.versionCode);
+            } catch (Exception ignored) {
+                app.put("versionName", "Unknown");
+            }
+            app.put("packageName", ctx.getPackageName());
+            app.put("internetPermissionDeclared", ctx.getPackageManager().checkPermission(
+                    "android.permission.INTERNET", ctx.getPackageName()) == PackageManager.PERMISSION_GRANTED);
+            root.put("app", app);
+
+            JSONObject access = new JSONObject();
+            access.put("accessibilityServiceConnected", hasAccessibilityEnabled());
+            access.put("accessibilityListedInSettings", isAccessibilityListedInSettings());
+            access.put("usageAccess", hasUsageAccess());
+            access.put("modifySystemSettings", hasWriteSettings());
+            access.put("batteryOptimizationExemption", hasBatteryExemption());
+            root.put("access", access);
+
+            String themesPackage = null;
+            String themesVersion = null;
+            String[] candidates = {"com.huawei.android.thememanager", "com.android.thememanager"};
+            for (String candidate : candidates) {
+                try {
+                    android.content.pm.PackageInfo info = ctx.getPackageManager().getPackageInfo(candidate, 0);
+                    themesPackage = candidate;
+                    themesVersion = info.versionName;
+                    break;
+                } catch (Exception ignored) {
+                }
+            }
+            JSONObject themes = new JSONObject();
+            themes.put("managerInstalled", themesPackage != null);
+            themes.put("managerPackage", themesPackage == null ? "Not detected" : themesPackage);
+            themes.put("managerVersion", themesVersion == null ? "Unknown" : themesVersion);
+            if (activity instanceof MainActivity) {
+                try {
+                    themes.put("lastInspection", new JSONObject(((MainActivity) activity).getLastThemeInspectionJson()));
+                } catch (Exception ignored) {
+                }
+            }
+            root.put("themes", themes);
+            root.put("privacy", "Created on-device. No report is sent automatically. No serial, IMEI, Android ID, contacts, personal files, or installed-app list is included. Review before sharing.");
+            return root.toString(2);
+        } catch (Exception e) {
+            return "{\"error\":\"" + safeJson(e.getMessage()) + "\"}";
+        }
+    }
+
     private JSONObject getBatteryInfoJson() {
         long now = System.currentTimeMillis();
         if (cachedBattery != null && (now - lastBatteryFetchTime < 3000L)) {
@@ -877,6 +949,26 @@ public class SystemBridge {
         } catch (Exception e) {
             showToast("Could not restore text scale.");
             return false;
+        }
+    }
+
+    /** Starts a local file selection and structural preview for a Huawei .hwt theme. */
+    @JavascriptInterface
+    public void importHuaweiTheme() {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).beginHuaweiThemeImport();
+        } else {
+            showToast("Theme preview is unavailable from this screen.");
+        }
+    }
+
+    /** Starts the folder picker only after the user reviewed the package preview. */
+    @JavascriptInterface
+    public void beginThemeFolderSelection() {
+        if (activity instanceof MainActivity) {
+            ((MainActivity) activity).beginThemeFolderSelection();
+        } else {
+            showToast("Theme import is unavailable from this screen.");
         }
     }
 

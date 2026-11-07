@@ -243,7 +243,7 @@
     background: rgba(9, 14, 28, 0.96);
     border-top: 1px solid var(--border);
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     z-index: 30;
   }
   .nav-item {
@@ -320,7 +320,7 @@
     <div class="logo">AC</div>
     <div>
       <div class="brand-title">AnneControl</div>
-      <div class="brand-sub" id="topModelLabel">Huawei P20 Lite · System Access</div>
+      <div class="brand-sub" id="topModelLabel">Huawei P20 Lite · Offline tools</div>
     </div>
   </div>
   <button class="refresh-btn" onclick="refreshAll()">↻ Refresh</button>
@@ -332,14 +332,15 @@
   <!-- ================= TAB 1: BOOST & SYSTEM HEALTH ================= -->
   <div id="tab-boost" class="tab-view" style="display:flex;flex-direction:column;gap:14px;">
 
-    <!-- 1-TAP INSTANT RAM & BLOAT SWEEPER -->
+    <!-- QUICK MAINTENANCE -->
     <div class="hero-card">
-      <span class="badge badge-sky">No PC Needed · Elevated System Access</span>
-      <h2>⚡ 1-Tap Huawei Bloat &amp; RAM Sweep</h2>
-      <p>Requests Android to stop eligible background processes in the selected scope.
-      Android may ignore a request or restart an app; this is not Force Stop and does not
-      guarantee more free RAM. <strong>Nothing is exempt by default</strong> — put apps you
-      want protected on the Keep&nbsp;Alive list below.</p>
+      <span class="badge badge-sky">Offline · No root</span>
+      <h2>Maintenance tools for Huawei P20 Lite</h2>
+      <p><strong>Important:</strong> AnneControl cannot repair EMUI bugs, install system updates,
+      or get privileged system access. Android allows it to read basic device stats, request
+      background-process stops, and guide Settings actions with Accessibility. Stop requests
+      may be ignored or apps may restart; this is not Force Stop and does not guarantee more
+      free RAM. Nothing is exempt by default — add apps you rely on to Keep Alive.</p>
       <button class="btn btn-primary" id="btnSweep" onclick="runRamSweep()">Request background cleanup</button>
     </div>
 
@@ -360,11 +361,11 @@
       <div id="keepListContainer" style="display:flex;flex-direction:column;gap:0;margin-top:6px;"></div>
     </div>
 
-    <!-- SPECIAL SYSTEM ACCESS SWITCHES -->
+    <!-- OPTIONAL ANDROID PERMISSIONS -->
     <div class="card">
-      <span class="badge badge-warn">Higher Access Switches</span>
-      <h3 style="margin-top:6px;">Elevated Android System Permissions</h3>
-      <p style="margin-bottom:8px;">Granting these built-in Android switches gives AnneControl direct system-level control over EMUI 9.1:</p>
+      <span class="badge badge-warn">Optional permissions</span>
+      <h3 style="margin-top:6px;">What each permission actually enables</h3>
+      <p style="margin-bottom:8px;">These are standard Android user-granted permissions, not root or system-level access. Grant only the ones you need; Android and EMUI still control what the app can do.</p>
 
       <div class="perm-row">
         <div>
@@ -538,7 +539,40 @@
 
   </div>
 
-  <!-- ================= TAB 5: POWER USER & PERMANENT ADB COMMANDS ================= -->
+  <!-- ================= TAB 5: HUAWEI THEMES ================= -->
+  <div id="tab-themes" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
+    <div class="hero-card">
+      <span class="badge badge-sky">Local .hwt preview · no upload</span>
+      <h2>Preview an EMUI theme first</h2>
+      <p>Choose a trusted <strong>.hwt</strong> file. AnneControl reads its bundled preview image and checks basic package structure without applying or uploading it. Structural checks cannot prove Huawei Themes will accept the package.</p>
+      <button class="btn btn-primary" id="btnImportTheme" onclick="importHuaweiTheme()">Choose a .hwt file to preview</button>
+    </div>
+    <div id="themePreviewCard" class="card hidden">
+      <h3 id="themePreviewName">Theme preview</h3>
+      <p id="themePreviewMeta" style="margin-bottom:10px;"></p>
+      <img id="themePreviewImage" alt="Preview image packaged inside the selected theme" style="display:none;width:100%;max-height:520px;object-fit:contain;background:#e8edf5;border-radius:12px;">
+      <div id="themePreviewNoImage" class="hidden" style="padding:18px;border:1px dashed var(--border);border-radius:12px;color:var(--muted);">This package has no supported preview image. You can still review the checks, but there is no image to show.</div>
+      <div id="themeCheckList" style="display:flex;flex-direction:column;gap:8px;margin-top:12px;"></div>
+      <p id="themePreviewNotice" style="margin-top:10px;"></p>
+      <button class="btn btn-primary" id="btnInstallTheme" onclick="importSelectedTheme()" disabled>Import into Huawei Themes…</button>
+      <button class="btn btn-outline" style="margin-top:8px;" onclick="clearThemePreview()">Choose another file</button>
+    </div>
+    <div class="card">
+      <h3>Device &amp; app support report</h3>
+      <p>Build a local report with your Huawei model/build, AnneControl version, relevant permission states, Huawei Themes availability, and the last theme-package check. It excludes serial/IMEI, Android ID, contacts, personal files, and installed-app lists. Nothing is sent unless you choose a share target.</p>
+      <button class="btn btn-outline" id="btnGenerateReport" onclick="generateSupportReport()">Generate report on this device</button>
+      <div id="supportReportPanel" class="hidden">
+        <pre id="supportReportText" style="white-space:pre-wrap;word-break:break-word;max-height:360px;overflow:auto;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:11px;"></pre>
+        <button class="btn btn-primary" id="btnShareReport" onclick="shareSupportReport()">Share report…</button>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Apply only after review</h3>
+      <p>If you choose Import, AnneControl copies the file to the selected Huawei/Themes folder (or HWThemes on some builds), then opens Huawei Themes. You still confirm Apply there. A preview is package artwork, not a live screenshot or a compatibility guarantee.</p>
+    </div>
+  </div>
+
+  <!-- ================= TAB 6: POWER USER & PERMANENT ADB COMMANDS ================= -->
   <div id="tab-power" class="tab-view hidden" style="display:flex;flex-direction:column;gap:12px;">
     <div class="hero-card">
       <span class="badge badge-sky">No Root Needed</span>
@@ -613,6 +647,10 @@
     <span class="nav-icon">🔧</span>
     <span>Fixes</span>
   </button>
+  <button class="nav-item" id="nav-themes" onclick="switchTab('themes')">
+    <span class="nav-icon">🎨</span>
+    <span>Themes</span>
+  </button>
   <button class="nav-item" id="nav-power" onclick="switchTab('power')">
     <span class="nav-icon">🚀</span>
     <span>Power</span>
@@ -622,6 +660,8 @@
 <script>
   var hasNative = typeof window.AnneNative !== "undefined";
   var currentTab = "boost";
+  var currentThemePreview = null;
+  var currentSupportReport = "";
   var bloatFilter = "safe";
   var bloatItems = [];
   var cacheItems = [];
@@ -740,7 +780,7 @@
 
   function switchTab(tab) {
     currentTab = tab;
-    var tabs = ["boost", "bloat", "cache", "fixes", "power"];
+    var tabs = ["boost", "bloat", "cache", "fixes", "themes", "power"];
     for (var i = 0; i < tabs.length; i++) {
       var t = tabs[i];
       var view = document.getElementById("tab-" + t);
@@ -1341,6 +1381,123 @@
 
   function dialCode(code) {
     if (hasNative) window.AnneNative.openDialerCode(code);
+  }
+
+  function importHuaweiTheme() {
+    if (!hasNative) {
+      showBanner("Theme preview is available in the installed Android app, not preview mode.");
+      return;
+    }
+    clearThemePreview();
+    setText("btnImportTheme", "Choose another .hwt file");
+    showBanner("Choose a local .hwt file. The phone's theme will not change during preview.");
+    window.AnneNative.importHuaweiTheme();
+  }
+
+  function themeFileSize(bytes) {
+    var value = Number(bytes);
+    if (!isFinite(value) || value < 0) return "size unavailable";
+    if (value < 1024 * 1024) return (value / 1024).toFixed(1) + " KB";
+    return (value / (1024 * 1024)).toFixed(2) + " MB";
+  }
+
+  function clearThemePreview() {
+    currentThemePreview = null;
+    var card = document.getElementById("themePreviewCard");
+    var img = document.getElementById("themePreviewImage");
+    if (card) card.classList.add("hidden");
+    if (img) { img.removeAttribute("src"); img.style.display = "none"; }
+    var noImage = document.getElementById("themePreviewNoImage");
+    if (noImage) noImage.classList.add("hidden");
+    var install = document.getElementById("btnInstallTheme");
+    if (install) install.disabled = true;
+    var checks = document.getElementById("themeCheckList");
+    while (checks && checks.firstChild) checks.removeChild(checks.firstChild);
+  }
+
+  window.onThemePreview = function(payload) {
+    try {
+      var result = typeof payload === "string" ? JSON.parse(payload) : payload;
+      currentThemePreview = result;
+      var card = document.getElementById("themePreviewCard");
+      var img = document.getElementById("themePreviewImage");
+      var noImage = document.getElementById("themePreviewNoImage");
+      var checks = document.getElementById("themeCheckList");
+      if (!card || !checks) return;
+      card.classList.remove("hidden");
+      setText("themePreviewName", result.themeName || result.fileName || "Theme preview");
+      setText("themePreviewMeta", (result.fileName || "Selected theme") + " · " + themeFileSize(result.fileBytes) +
+        (result.version ? " · v" + result.version : "") + (result.font ? " · " + result.font : ""));
+      while (checks.firstChild) checks.removeChild(checks.firstChild);
+      var list = result.checks || [];
+      for (var i = 0; i < list.length; i++) {
+        var row = make("div", "perm-row");
+        row.style.padding = "8px 0";
+        var label = make("div");
+        label.appendChild(make("div", null, (list[i].ok ? "✓ " : "! ") + list[i].name));
+        label.appendChild(make("div", null, list[i].detail || "", "font-size:11px;color:var(--muted);margin-top:2px;"));
+        row.appendChild(label);
+        row.appendChild(makeBadge(list[i].ok ? "Checked" : "Review", list[i].ok ? "badge badge-ok" : "badge badge-warn"));
+        checks.appendChild(row);
+      }
+      setText("themePreviewNotice", result.notice || result.error || "Preview only. Nothing has been applied.");
+      if (result.previewImageBase64) {
+        img.src = "data:" + (result.previewMime || "image/jpeg") + ";base64," + result.previewImageBase64;
+        img.style.display = "block";
+        noImage.classList.add("hidden");
+      } else {
+        img.removeAttribute("src");
+        img.style.display = "none";
+        noImage.classList.remove("hidden");
+      }
+      var install = document.getElementById("btnInstallTheme");
+      if (install) install.disabled = !result.ok;
+      showBanner(result.ok ? "Theme preview ready. Review the package checks before importing." :
+        "Theme could not be inspected: " + (result.error || "unknown error"));
+    } catch (e) {
+      showBanner("Could not display the theme preview.");
+    }
+  };
+
+  window.onThemeImportError = function(message) {
+    showBanner(String(message || "Theme import failed."));
+  };
+
+  window.onThemeImportComplete = function() {
+    showBanner("Theme file copied. Review and apply it in Huawei Themes when ready.");
+    if (currentThemePreview) currentThemePreview.imported = true;
+  };
+
+  function importSelectedTheme() {
+    if (!hasNative || !currentThemePreview || !currentThemePreview.ok) {
+      showBanner("Select and inspect a valid .hwt theme first.");
+      return;
+    }
+    window.AnneNative.beginThemeFolderSelection();
+  }
+
+  function generateSupportReport() {
+    if (!hasNative) {
+      showBanner("Device report is available in the installed Android app.");
+      return;
+    }
+    try {
+      currentSupportReport = window.AnneNative.getSupportReportJson();
+      var parsed = JSON.parse(currentSupportReport);
+      setText("supportReportText", JSON.stringify(parsed, null, 2));
+      document.getElementById("supportReportPanel").classList.remove("hidden");
+      showBanner("On-device report created. Nothing was sent; review before sharing.");
+    } catch (e) {
+      showBanner("Could not create the support report: " + e);
+    }
+  }
+
+  function shareSupportReport() {
+    if (!hasNative || !currentSupportReport) {
+      showBanner("Generate the report before sharing.");
+      return;
+    }
+    window.AnneNative.shareText("AnneControl device and theme report", currentSupportReport);
   }
 
   /* ------------------------------------------------------------------ boot */
