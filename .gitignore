@@ -6,7 +6,8 @@ build/
 *.jks
 *.b64
 keystore/
+private-signing/
 __pycache__/
 node_modules/
 
-# Local release-signing material must never be committed.
+# Local release/test signing material must never be committed.

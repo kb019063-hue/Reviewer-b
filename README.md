@@ -39,12 +39,14 @@ new certificate's SHA-256 digest. CI fails if the built APK's certificate does n
 it. Generate and store the new key securely; never commit it or paste its private
 material into chat.
 
-For phone testing without release secrets, CI also produces a **test-only debug APK** on
-main-branch pushes. It is signed with a fresh one-run key and is never published as a
-release. Android will not allow a later test APK (or a release APK) to update an install
-signed by a different key. Uninstalling first may erase AnneControl's saved settings; export
-or record anything you need before replacing the app. A stable private key is still required
-for updateable releases.
+For phone testing without the release key, CI produces a **test-only debug APK** on
+main-branch pushes. Set the separate `ANNE_TEST_SIGNING_KEY` Actions secret once to make
+test builds updateable; it contains `<base64 PKCS12 keystore>|<password>`. Each CI run
+increases the test APK's versionCode. If the secret is absent, CI uses a fresh temporary key
+and that APK cannot be updated by a later build. Test builds are never published as releases
+and cannot update a release-signed install. Switching from the previous temporary-key APK
+requires one uninstall (which may erase saved settings); after installing a stable-key test
+APK, later test builds can update it in place.
 
 ## Building
 
@@ -56,7 +58,7 @@ The build uses the plain Android SDK tools directly (`aapt2`, `javac`, `d8`, `zi
 python3 anne-control-apk/ci_build.py
 # -> dist/AnneControl-P20Lite.apk
 
-# Disposable test APK; creates a new temporary signing key for this run.
+# Test APK; uses ANNE_TEST_SIGNING_KEY if set, otherwise a temporary local key.
 python3 anne-control-apk/ci_build.py --debug-test
 # -> dist/AnneControl-P20Lite-Debug.apk
 ```

@@ -57,8 +57,8 @@ jobs:
             anne-control-apk/test/java/com/annecontrol/p20lite/QueuePlannerTest.java
           java -cp /tmp/annecontrol-unit-tests com.annecontrol.p20lite.QueuePlannerTest
 
-  # No secrets: an ephemeral signer creates a disposable test APK on main pushes.
-  # It is never published as a release and a later build cannot update it in place.
+  # Uses ANNE_TEST_SIGNING_KEY when configured; the fallback signer is ephemeral.
+  # This test artifact is never published as a release.
   build-debug-apk:
     name: Build test-only debug APK (ephemeral signer)
     needs: test
@@ -82,8 +82,12 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-28" || true
           fi
 
-      - name: Build, align, and sign disposable test APK
-        run: python3 anne-control-apk/ci_build.py --debug-test
+      - name: Build, align, and sign test APK
+        env:
+          ANNE_TEST_SIGNING_KEY: ${{ secrets.ANNE_TEST_SIGNING_KEY }}
+        run: |
+          python3 anne-control-apk/ci_build.py --debug-test \
+            --version-code "$((100000 + GITHUB_RUN_NUMBER))"
 
       - name: Upload test-only APK artifact
         uses: actions/upload-artifact@v4
