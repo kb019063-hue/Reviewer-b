@@ -6,10 +6,10 @@ Uses official Android SDK build-tools (aapt2, javac, d8, zipalign, apksigner).
 Signing
 -------
 Release builds require a persistent private key supplied through ANNE_SIGNING_KEY,
-RELEASE_KEYSTORE_B64, or a local ignored keystore. The explicit --debug-test mode creates
-an ephemeral one-run key for a disposable test APK only; it is never a release and cannot
-be updated by a later test APK. CI release builds also require ANNE_SIGNER_SHA256 to pin
-the expected signing certificate. Passwords are passed to tools through environment references.
+RELEASE_KEYSTORE_B64, or a local ignored keystore. The explicit --debug-test mode uses the
+separate ANNE_TEST_SIGNING_KEY when configured, falling back to a one-run local/CI key only
+when absent. Test APKs are never releases. CI release builds also require ANNE_SIGNER_SHA256
+to pin the expected signing certificate. Passwords are passed through environment references.
 """
 import argparse
 import base64
@@ -173,7 +173,7 @@ def signing_password_args():
 
 
 def create_ephemeral_test_keystore(path: Path):
-    """Create a one-run debug key. Never use this key for releases or updates."""
+    """Create a local fallback key when no persistent test signer is configured."""
     keytool = shutil.which("keytool")
     if not keytool:
         sys.exit("ERROR: keytool is required for a test-only signed APK")
@@ -194,6 +194,29 @@ def create_ephemeral_test_keystore(path: Path):
     return path
 
 
+def resolve_test_keystore(path: Path):
+    """Use a persistent Actions test signer when configured; otherwise use a disposable key."""
+    combined = os.environ.get("ANNE_TEST_SIGNING_KEY", "").strip()
+    if not combined:
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            print("::warning::ANNE_TEST_SIGNING_KEY is not set; this run will use a temporary signer and cannot update a previous test install.")
+        return create_ephemeral_test_keystore(path), False
+
+    parts = combined.split("|")
+    if len(parts) != 2 or not parts[1]:
+        sys.exit("ERROR: ANNE_TEST_SIGNING_KEY must be '<base64 PKCS12 keystore>|<password>'")
+    try:
+        blob = base64.b64decode(parts[0], validate=True)
+    except Exception as exc:
+        sys.exit(f"ERROR: ANNE_TEST_SIGNING_KEY is not valid base64: {exc}")
+    if len(blob) < 512 or blob[0] != 0x30:
+        sys.exit("ERROR: ANNE_TEST_SIGNING_KEY does not look like a PKCS12 keystore")
+    path.write_bytes(blob)
+    os.chmod(path, 0o600)
+    os.environ["ANNE_TEST_KEY_PASSWORD"] = parts[1]
+    return path, True
+
+
 def assert_signer(verify_output, expected_hex):
     """Pin the APK signer certificate so a wrong key cannot silently ship."""
     match = re.search(r"certificate SHA-256 digest:\s*([0-9a-fA-F:]+)", verify_output)
@@ -212,12 +235,15 @@ def main():
     parser = argparse.ArgumentParser(description="Build AnneControl for Android 9 / ANE-LX1")
     parser.add_argument(
         "--debug-test", action="store_true",
-        help="build a test-only APK signed with a fresh one-run key; not release/update compatible",
+        help="build a test-only APK using ANNE_TEST_SIGNING_KEY, or a one-run fallback key",
     )
+    parser.add_argument("--version-code", type=int, help="optional Android versionCode override")
     args = parser.parse_args()
+    if args.version_code is not None and not (1 <= args.version_code <= 2100000000):
+        parser.error("--version-code must be between 1 and 2100000000")
 
     # Both build modes run the pure-logic tests first. Release mode keeps the
-    # stable private-key guard; test mode uses an ephemeral key and is never published.
+    # stable private-key guard; test mode remains separate from release signing.
     run_unit_tests()
     keystore = None
     if not args.debug_test:
@@ -237,8 +263,9 @@ def main():
     DIST_DIR.mkdir(parents=True, exist_ok=True)
 
     output_apk = DEBUG_APK if args.debug_test else FINAL_APK
+    persistent_test_key = False
     if args.debug_test:
-        keystore = create_ephemeral_test_keystore(WORK_DIR / "annecontrol-debug-test.p12")
+        keystore, persistent_test_key = resolve_test_keystore(WORK_DIR / "annecontrol-debug-test.p12")
         signer_alias = DEBUG_KEY_ALIAS
         password_args = ["--ks-pass", "env:ANNE_TEST_KEY_PASSWORD", "--key-pass", "env:ANNE_TEST_KEY_PASSWORD"]
     else:
@@ -253,7 +280,7 @@ def main():
     gen_dir = WORK_DIR / "gen"
     gen_dir.mkdir()
     unaligned_apk = WORK_DIR / "unaligned.apk"
-    run([
+    link_command = [
         aapt2, "link",
         "-o", unaligned_apk,
         "-I", android_jar,
@@ -262,8 +289,11 @@ def main():
         "--java", gen_dir,
         "--min-sdk-version", "26",
         "--target-sdk-version", "28",
-        res_zip,
-    ])
+    ]
+    if args.version_code is not None:
+        link_command.extend(["--version-code", str(args.version_code)])
+    link_command.append(res_zip)
+    run(link_command)
 
     # 3. Compile Java sources to bytecode (.class -> classes.jar)
     classes_dir = WORK_DIR / "classes"
@@ -305,7 +335,7 @@ def main():
     run([zipalign, "-f", "-p", "4", unaligned_apk, aligned_apk])
 
     # 7. Sign (v1 + v2 + v3 for Huawei Android 9 compatibility).
-    # Test mode signs only with a fresh ephemeral key and is never a release artifact.
+    # Test mode is separate from release signing and is never a release artifact.
     run([
         apksigner, "sign",
         "--ks", keystore,
@@ -327,7 +357,10 @@ def main():
     verify_out = run([apksigner, "verify", "--verbose", "--print-certs", output_apk])
     print(verify_out)
     if args.debug_test:
-        print("Test-only APK uses a fresh ephemeral signer; uninstall before replacing it with any later build.")
+        if persistent_test_key:
+            print("Test-only APK uses the persistent test signer; later builds can update it in place.")
+        else:
+            print("Test APK uses a temporary signer; uninstall before replacing it with a later build.")
     else:
         expected_signer = os.environ.get("ANNE_SIGNER_SHA256", "").strip()
         if expected_signer:
