@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<HWTheme>
+   <item style="amazing"/>
+   <item layout="layout1"/>
+   <item slideinAmaze="true"/>
+   <item maxHeight="2160"/>
+   <item baseVersion="6.0"/>
+</HWTheme>

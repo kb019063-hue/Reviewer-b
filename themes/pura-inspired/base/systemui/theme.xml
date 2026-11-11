@@ -1,0 +1,63 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  	<color name="qs_panel_background">#112b3b</color>
+  <color name="qs_panel_background_lite">#112b3b</color>
+  <color name="emui_accent">#33cccc</color>
+   	<color name="qs_customize_content_backgroundcolor">#90000000</color>
+	<color name="qs_tile_tint_on">#ff56c1e5</color>
+	<color name="qs_tile_tint_opening">#9956c1e5</color>
+	<color name="qs_tile_tint_off">#ededed</color>
+        <color name="qs_tile_tint_disable">#60ffffff</color>
+	<color name="qs_detail_transition_start">#ff56c1e5</color>
+   	<color name="qs_detail_transition_end">#ff56c1e5</color>
+    	<color name="qs_detail_button">#ff56c1e5</color>
+    	<color name="qs_text_user">#ffffffff</color> 
+  	<color name="qs_user_detail_name">#ffffffff</color>
+	<color name="volume_slider_inactive">#80ffffff</color>	
+	<color name="volume_image_color">#ff56c1e5</color>
+	<color name="volume_text_color">#ffffffff</color>
+	<color name="volume_icon_color">#ffffffff</color>
+	<color name="volume_settings_icon_color">#ffffffff</color>
+	<color name="status_bar_brightness_image_color">#ffffffff</color>
+	<color name="usb_text_color">#ffffffff</color>
+	<color name="brightness_bar_left_color">#ff56c1e5</color>
+ 	<color name="brightness_bar_right_color">#ff56c1e5</color>
+ 	<color name="brightness_progress_bg_color">#ff707070</color>
+  	<color name="brightness_image_color">#ff56c1e5</color>
+	<color name="brightness_text_color">#ffffffff</color>
+	<color name="qs_customize_toolbar_text_color">#ffffffff</color>
+	
+	
+	<color name="notification_guts_bg_color">#ff000000</color>													   
+	<color name="notification_guts_button_text_color">#ffefefef</color>
+    <color name="notification_header_clock_icon_color_pressed">#66efefef</color>
+    <color name="notification_header_clock_text_color">#efefef</color>
+	<color name="notification_header_clock_text_color_pressed">#4d4d4d</color>
+    <color name="notification_header_icon_color">#efefef</color>
+	<color name="notification_icon_bg_color">#ff212026</color>
+	<color name="notification_legacy_background_color">#ff212026</color>													   
+	<color name="notification_manager_tip_background_color">#d9d9d9</color>
+	<color name="notification_manager_tip_color">#07bcf0</color>
+	<color name="notification_manager_tip_text_color">#efefef</color>																	
+	<color name="notification_material_background_color">#ff000000</color>
+	<color name="notification_material_background_dark_color">#ff000000</color>
+	<color name="notification_material_background_dimmed_color">#ff000000</color>
+	<color name="notification_material_background_low_priority_color">#00212026</color>
+	<color name="notification_material_background_media_default_color">#ff000000</color>
+	<color name="notification_ripple_untinted_color">#28efefef</color>
+	<color name="notification_shade_background_color">#ff000000</color>
+	
+	<color name="qs_customize_divider_text_color">#ffffffff</color>
+    	<color name="qs_customize_divider_backgroundcolor">#00000000</color>
+	<color name="quick_settings_footer_text">#ff56c1e5</color>
+    	<color name="ic_ab_back_color">#ffffffff</color>
+	<color name="global_screenshot_btn_text_color">#ff56c1e5</color>
+    	<color name="global_screenshot_bg_btn_color">#ff000000</color>
+    	<color name="global_screenshot_btn_ic_color">#ff56c1e5</color>
+    	<color name="global_screenshot_edit_btn_ic_color">#ff56c1e5</color>
+    	<color name="global_screenshot_long_screen_btn_ic_color">#ff56c1e5</color>
+   	<color name="float_tips_txt_color">#ffffff</color>
+    	<color name="float_tips_sub_txt_color">#99ffffff</color>
+    	<color name="float_tips_settings_txt_color">#99ffffff</color>
+    	<color name="float_tips_settings_sub_txt_color">#60ffffff</color>
+</resources>

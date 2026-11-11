@@ -1,101 +1,418 @@
 #!/usr/bin/env python3
-"""Build a P20 Lite EMUI 9.1 experimental, Pura-inspired theme."""
+"""Build Sunset Sky v1.4 — an EMUI 9.1 (ANE-LX1 / P20 Lite) .hwt theme.
+
+v1.4 keeps the v1.2/v1.3 structure that matches a known-working EMUI 9.1
+package (BOM + CRLF description.xml with EMUI-line version, 256x256 icons at
+the root of the nested icons zip, the standard "amazing" unlock module,
+framework-res / framework-res-hwext / systemui / launcher modules, hwtTool-style
+zip directory entries) and adds: a 14-app icon set with launcher icon masks,
+two home-screen wallpapers, a sunset accent colour, an Inter-based font package
+under fonts/ (Roboto-style filenames + pic_font_default.jpg, like the Vesper
+theme in this repo), and colour-only com.android.phone / com.android.incallui
+modules so the dialer keypad follows the theme. Structural skeleton under base/
+comes from a real EMUI 9.1 theme; all artwork is generated here.
+
+Requires Pillow and fonttools.
+"""
 from pathlib import Path
 from io import BytesIO
-from zipfile import ZipFile, ZIP_DEFLATED
-from PIL import Image, ImageDraw, ImageOps
+from zipfile import ZipFile, ZIP_DEFLATED, ZIP_STORED, ZipInfo
 import xml.etree.ElementTree as ET
+from PIL import Image, ImageDraw, ImageOps
 
 ROOT = Path(__file__).resolve().parent
-S = 4
+BASE = ROOT / 'base'
+S = 4  # supersampling factor for icon artwork
+ICON = 256  # EMUI 9.1 launcher icons are 256x256 (EMUI 8 used 192x192)
+ACCENT = '#ff7a45'  # sunset accent
+
 
 def icon(kind):
-    im=Image.new('RGBA',(192*S,192*S)); d=ImageDraw.Draw(im)
-    def box(b): return tuple(round(x*S) for x in b)
-    def line(points, fill, width=8): d.line([(int(x*S),int(y*S)) for x,y in points],fill=fill,width=width*S,joint='curve')
-    def ellipse(b,fill,outline=None,width=1): d.ellipse(box(b),fill=fill,outline=outline,width=width*S)
-    def rect(b,r,fill,outline=None,width=1): d.rounded_rectangle(box(b),r*S,fill=fill,outline=outline,width=width*S)
-    colors={'phone':'#30c95e','messages':'#259df4','camera':'#e9edf1','gallery':'#f8fafc','settings':'#edf1f4','music':'#f64673'}
-    rect((12,12,180,180),42,colors[kind])
-    if kind=='phone':
-        # Curved handset, not a button or a shortcut.
-        line([(49,53),(48,70),(55,90),(68,108),(84,122),(103,132),(123,134),(137,126)],'white',16)
-        rect((38,43,66,76),10,'white'); rect((119,112,150,139),10,'white')
-    elif kind=='messages':
-        rect((38,47,154,125),23,'white'); d.polygon([box((57,118))[:2],box((54,145))[:2],box((82,120))[:2]],fill='white')
-        for x in (70,96,122): ellipse((x-5,83,x+5,93),'#259df4')
-    elif kind=='camera':
-        rect((32,58,160,139),20,'#44515e'); rect((57,46,102,65),8,'#44515e')
-        ellipse((63,67,130,134),'#cbd5de'); ellipse((72,76,121,125),'#273a4f'); ellipse((86,83,104,101),'#85b9dc'); ellipse((139,69,148,78),'white')
-    elif kind=='gallery':
-        for b,c in [((71,32,120,105),'#ee487a'),((98,54,158,101),'#fdad37'),((94,91,140,151),'#62b768'),((52,93,99,151),'#39a8d8'),((33,54,97,102),'#a56ccc')]: ellipse(b,c)
-        ellipse((80,79,112,111),'#ffdc55')
-    elif kind=='settings':
+    im = Image.new('RGBA', (ICON * S, ICON * S))
+    d = ImageDraw.Draw(im)
+
+    def box(b):
+        return tuple(round(x * S) for x in b)
+
+    def line(points, fill, width=8):
+        d.line([(int(x * S), int(y * S)) for x, y in points], fill=fill, width=width * S, joint='curve')
+
+    def ellipse(b, fill=None, outline=None, width=1):
+        d.ellipse(box(b), fill=fill, outline=outline, width=width * S)
+
+    def rect(b, r, fill, outline=None, width=1):
+        d.rounded_rectangle(box(b), r * S, fill=fill, outline=outline, width=width * S)
+
+    def polygon(points, fill):
+        d.polygon([(int(x * S), int(y * S)) for x, y in points], fill=fill)
+
+    colors = {'phone': '#30c95e', 'messages': '#259df4', 'camera': '#e9edf1',
+              'gallery': '#f8fafc', 'settings': '#edf1f4', 'music': '#f64673',
+              'browser': '#3b82f6', 'clock': '#0ea5e9', 'calendar': '#ef4444',
+              'contacts': '#8b5cf6', 'email': '#6366f1', 'files': '#10b981',
+              'recorder': '#f43f5e', 'appmarket': '#f97316'}
+    rect((12, 12, 180, 180), 42, colors[kind])
+    if kind == 'phone':
+        line([(49, 53), (48, 70), (55, 90), (68, 108), (84, 122), (103, 132), (123, 134), (137, 126)], 'white', 16)
+        rect((38, 43, 66, 76), 10, 'white')
+        rect((119, 112, 150, 139), 10, 'white')
+    elif kind == 'messages':
+        rect((38, 47, 154, 125), 23, 'white')
+        polygon([(57, 118), (54, 145), (82, 120)], 'white')
+        for x in (70, 96, 122):
+            ellipse((x - 5, 83, x + 5, 93), fill='#259df4')
+    elif kind == 'camera':
+        rect((32, 58, 160, 139), 20, '#44515e')
+        rect((57, 46, 102, 65), 8, '#44515e')
+        ellipse((63, 67, 130, 134), fill='#cbd5de')
+        ellipse((72, 76, 121, 125), fill='#273a4f')
+        ellipse((86, 83, 104, 101), fill='#85b9dc')
+        ellipse((139, 69, 148, 78), fill='white')
+    elif kind == 'gallery':
+        for b, c in [((71, 32, 120, 105), '#ee487a'), ((98, 54, 158, 101), '#fdad37'),
+                     ((94, 91, 140, 151), '#62b768'), ((52, 93, 99, 151), '#39a8d8'),
+                     ((33, 54, 97, 102), '#a56ccc')]:
+            ellipse(b, fill=c)
+        ellipse((80, 79, 112, 111), fill='#ffdc55')
+    elif kind == 'settings':
         import math
-        for a in range(0,360,45):
-            t=math.radians(a); line([(96+44*math.cos(t),96+44*math.sin(t)),(96+61*math.cos(t),96+61*math.sin(t))],'#718293',14)
-        ellipse((48,48,144,144),'#718293'); ellipse((69,69,123,123),'#edf1f4'); ellipse((82,82,110,110),'#718293')
-    elif kind=='music':
-        line([(106,50),(106,123)],'white',10); line([(106,53),(139,44),(139,110)],'white',10)
-        ellipse((65,112,108,139),'white'); ellipse((99,98,141,125),'white')
-    return im.resize((192,192),Image.Resampling.LANCZOS)
+        for a in range(0, 360, 45):
+            t = math.radians(a)
+            line([(96 + 44 * math.cos(t), 96 + 44 * math.sin(t)), (96 + 61 * math.cos(t), 96 + 61 * math.sin(t))], '#718293', 14)
+        ellipse((48, 48, 144, 144), fill='#718293')
+        ellipse((69, 69, 123, 123), fill='#edf1f4')
+        ellipse((82, 82, 110, 110), fill='#718293')
+    elif kind == 'music':
+        line([(106, 50), (106, 123)], 'white', 10)
+        line([(106, 53), (139, 44), (139, 110)], 'white', 10)
+        ellipse((65, 112, 108, 139), fill='white')
+        ellipse((99, 98, 141, 125), fill='white')
+    elif kind == 'browser':  # globe
+        ellipse((40, 40, 152, 152), outline='white', width=10)
+        line([(40, 96), (152, 96)], 'white', 8)
+        ellipse((70, 40, 122, 152), outline='white', width=8)
+    elif kind == 'clock':
+        ellipse((44, 44, 148, 148), outline='white', width=10)
+        line([(96, 96), (96, 58)], 'white', 10)
+        line([(96, 96), (126, 108)], 'white', 10)
+        ellipse((90, 90, 102, 102), fill='white')
+    elif kind == 'calendar':
+        rect((38, 50, 154, 148), 12, 'white')
+        rect((38, 50, 154, 78), 12, '#fecaca')
+        d.rectangle(box((38, 64, 154, 78)), fill='#fecaca')
+        for x in (58, 96, 134):
+            line([(x, 40), (x, 56)], '#fecaca', 8)
+        for x in (60, 82, 104, 126):
+            for y in (92, 112, 132):
+                ellipse((x - 4, y - 4, x + 4, y + 4), fill='#ef4444')
+    elif kind == 'contacts':  # person
+        ellipse((76, 52, 116, 92), fill='white')
+        d.pieslice(box((56, 84, 136, 164)), 180, 360, fill='white')
+    elif kind == 'email':  # envelope
+        rect((36, 58, 156, 134), 8, 'white')
+        line([(40, 62), (96, 100), (152, 62)], '#6366f1', 8)
+    elif kind == 'files':  # folder
+        rect((36, 66, 156, 140), 10, 'white')
+        d.rectangle(box((36, 66, 156, 84)), fill='white')
+        rect((36, 54, 92, 76), 8, '#d1fae5')
+    elif kind == 'recorder':  # microphone
+        rect((82, 42, 110, 100), 14, 'white')
+        d.arc(box((70, 84, 122, 136)), 0, 180, fill='white', width=10)
+        line([(96, 136), (96, 152)], 'white', 8)
+        line([(78, 152), (114, 152)], 'white', 8)
+    elif kind == 'appmarket':  # shopping bag
+        d.polygon([(int(56 * S), int(74 * S)), (int(136 * S), int(74 * S)), (int(148 * S), int(150 * S)), (int(44 * S), int(150 * S))], fill='white')
+        d.arc(box((76, 46, 116, 86)), 180, 360, fill='white', width=10)
+    return im.resize((ICON, ICON), Image.Resampling.LANCZOS)
+
 
 def png(im):
-    b=BytesIO(); im.save(b,'PNG',optimize=True); return b.getvalue()
+    b = BytesIO()
+    im.save(b, 'PNG', optimize=True)
+    return b.getvalue()
+
 
 def jpg(im, quality=90):
-    b=BytesIO(); im.convert('RGB').save(b,'JPEG',quality=quality,optimize=True); return b.getvalue()
+    b = BytesIO()
+    im.convert('RGB').save(b, 'JPEG', quality=quality, optimize=True)
+    return b.getvalue()
 
-mapping={'phone':['com.android.phone','com.android.dialer','com.android.contacts.activities.DialtactsActivity'], 'messages':['com.android.mms'], 'camera':['com.huawei.camera','com.android.camera'], 'gallery':['com.android.gallery3d'], 'settings':['com.android.settings'], 'music':['com.android.mediacenter']}
-wall=ImageOps.fit(Image.open(ROOT/'source/sunset.png').convert('RGB'),(1080,2280),Image.Resampling.LANCZOS)
-wall_bytes=jpg(wall); assert len(wall_bytes)<1000000
-icons=BytesIO()
-with ZipFile(icons,'w',ZIP_DEFLATED) as z:
+
+def zip_entry(arc, name, data, method=ZIP_DEFLATED):
+    """Write an entry the way Windows/7-zip hwt packages do: DOS create_system,
+    no data descriptors (flag 0)."""
+    zi = ZipInfo(name, date_time=(2026, 11, 11, 12, 0, 0))
+    zi.compress_type = method
+    zi.create_system = 0
+    arc.writestr(zi, data)
+
+
+def dir_entry(arc, name):
+    zip_entry(arc, name if name.endswith('/') else name + '/', b'', ZIP_STORED)
+
+
+def module_zip(files):
+    """Build a nested module archive (like com.huawei.android.launcher)."""
+    b = BytesIO()
+    with ZipFile(b, 'w', ZIP_DEFLATED) as z:
+        for name, data in files:
+            zip_entry(z, name, data)
+    return b.getvalue()
+
+
+FONT_WEIGHTS = {300: 'Roboto-Light.ttf', 400: 'Roboto-Regular.ttf', 500: 'Roboto-Medium.ttf',
+                600: 'Roboto-SemiBold.ttf', 700: 'Roboto-Bold.ttf'}
+
+
+def build_fonts():
+    """Instantiate static Inter weights under EMUI's Roboto-style font filenames,
+    plus the license and the font preview card (pic_font_default.jpg)."""
+    from fontTools.ttLib import TTFont
+    from fontTools.varLib.instancer import instantiateVariableFont
+    src = ROOT / 'source/fonts/Inter-Variable.ttf'
+    var = TTFont(src)
+    axes = {a.axisTag for a in var['fvar'].axes}
+    out = {}
+    for weight, filename in FONT_WEIGHTS.items():
+        loc = {'wght': weight}
+        if 'opsz' in axes:
+            loc['opsz'] = 14
+        static = instantiateVariableFont(var, loc, inplace=False)
+        b = BytesIO()
+        static.save(b)
+        out[filename] = b.getvalue()
+    out['OFL-Inter.txt'] = (ROOT / 'source/fonts/OFL-Inter.txt').read_bytes()
+    # font preview card shown by the Themes app font picker
+    card = Image.new('RGB', (500, 520), '#263648')
+    cd = ImageDraw.Draw(card)
+    cd.rounded_rectangle((0, 0, 499, 519), outline='#ff7a45', width=2)
+    import io as _io
+    reg = TTFont(_io.BytesIO(out['Roboto-Regular.ttf']))
+    from PIL import ImageFont
+    f_big = ImageFont.truetype(_io.BytesIO(out['Roboto-SemiBold.ttf']), 34)
+    f_mid = ImageFont.truetype(_io.BytesIO(out['Roboto-Regular.ttf']), 30)
+    f_small = ImageFont.truetype(_io.BytesIO(out['Roboto-Regular.ttf']), 18)
+    cd.text((34, 40), 'Sunset Sans', font=f_big, fill='#F6F1E9')
+    cd.text((34, 104), 'Aa Bb Cc 123', font=f_mid, fill='#C9C0B5')
+    cd.text((34, 156), 'Light · Regular · Medium · SemiBold · Bold', font=f_small, fill='#ff7a45')
+    cd.text((34, 330), 'The quick brown fox jumps', font=f_small, fill='#C9C0B5')
+    cd.text((34, 372), '0123456789 !@#$%*()?', font=f_small, fill='#9B9188')
+    b = BytesIO()
+    card.save(b, 'JPEG', quality=92)
+    out['pic_font_default.jpg'] = b.getvalue()
+    return out
+
+
+# package-name -> icon mapping (Huawei dialer uses the contacts activity)
+mapping = {'phone': ['com.android.phone', 'com.android.dialer', 'com.android.contacts.activities.DialtactsActivity'],
+           'contacts': ['com.android.contacts'],
+           'messages': ['com.android.mms', 'com.google.android.apps.messaging'],
+           'camera': ['com.huawei.camera', 'com.android.camera'],
+           'gallery': ['com.android.gallery3d'],
+           'settings': ['com.android.settings'],
+           'music': ['com.android.mediacenter'],
+           'browser': ['com.huawei.browser', 'com.android.browser'],
+           'clock': ['com.android.deskclock'],
+           'calendar': ['com.android.calendar'],
+           'email': ['com.android.email', 'com.google.android.gm'],
+           'files': ['com.huawei.hidisk', 'com.android.documentsui'],
+           'recorder': ['com.android.soundrecorder'],
+           'appmarket': ['com.huawei.appmarket']}
+
+# Two home-screen pages: render the artwork tall, then take two crops.
+src = Image.open(ROOT / 'source/sunset.png').convert('RGB')
+tall = ImageOps.fit(src, (1080, 2600), Image.Resampling.LANCZOS)
+wall0 = tall.crop((0, 0, 1080, 2280))
+wall1 = tall.crop((0, 320, 1080, 2600))
+wall_bytes = jpg(wall0)
+wall1_bytes = jpg(wall1)
+assert len(wall_bytes) < 1000000 and len(wall1_bytes) < 1000000
+
+# icons zip: EMUI 9.1 keeps the PNGs at the zip root; also add the icons/ prefix
+# used by some other themes so either lookup convention matches.
+icons = BytesIO()
+with ZipFile(icons, 'w', ZIP_DEFLATED) as z:
     for kind, names in mapping.items():
-        for name in names: z.writestr('icons/'+name+'.png',png(icon(kind)))
+        data = png(icon(kind))
+        for name in names:
+            zip_entry(z, name + '.png', data)
+            zip_entry(z, 'icons/' + name + '.png', data)
+
 # An actual asset sheet, not a simulated screen or device screenshot.
-sheet=Image.new('RGB',(600,480),'#f1f3f6'); d=ImageDraw.Draw(sheet)
-for i,kind in enumerate(mapping):
-    x=50+(i%3)*190; y=25+(i//3)*220
-    sheet.paste(icon(kind).resize((128,128),Image.Resampling.LANCZOS),(x,y),icon(kind).resize((128,128),Image.Resampling.LANCZOS))
-    d.text((x+30,y+140),kind.title(),fill='#263648')
-sheet.save(ROOT/'icon-assets.png')
-wall.resize((540,1140),Image.Resampling.LANCZOS).save(ROOT/'wallpaper-preview.jpg',quality=88)
-xml='''<?xml version="1.0" encoding="UTF-8"?>\n<HwTheme><title>Sunset Sky</title><title-cn>Sunset Sky</title-cn><author>Independent design</author><designer>Independent design</designer><screen>FHD</screen><version>1.1.0</version><font>Default</font><font-cn>默认</font-cn></HwTheme>'''.encode('utf-8')
-# Use a regular system slide lock, not a custom or fake lockscreen.
-unlock = b'<?xml version="1.0" encoding="UTF-8"?><HWTheme><item style="slide"/></HWTheme>'
-launcher_xml = b'''<?xml version="1.0" encoding="UTF-8"?><hwthemes>
-<color name="workspace_app_text_color">#FFFFFFFF</color>
-<bool name="workspace_app_text_shadow">true</bool>
-</hwthemes>'''
-launcher = BytesIO()
-with ZipFile(launcher, 'w', ZIP_DEFLATED) as z:
-    z.writestr('theme.xml', launcher_xml)
-out=ROOT/'Sunset-Sky-EMUI91-v1.1.hwt'
-with ZipFile(out,'w',ZIP_DEFLATED,compresslevel=9) as z:
-    z.writestr('description.xml',xml)
-    z.writestr('unlock/theme.xml', unlock)
-    z.writestr('com.huawei.android.launcher', launcher.getvalue())
-    z.writestr('wallpaper/home_wallpaper_0.jpg',wall_bytes)
-    z.writestr('wallpaper/unlock_wallpaper_0.jpg',wall_bytes)
-    z.writestr('icons',icons.getvalue())
-    # Artwork-only previews, without simulated widgets or icons.
-    z.writestr('preview/cover.jpg',jpg(ImageOps.fit(wall,(1080,1920)), 80))
-    z.writestr('preview/preview_wallpaper_0.jpg',jpg(ImageOps.fit(wall,(1080,2160)), 80))
-    z.writestr('preview/preview_unlock_0.jpg',jpg(ImageOps.fit(wall,(1080,2160)), 80))
-    z.writestr('preview/preview_icons_0.jpg',jpg(sheet, 85))
+kinds = list(mapping)
+cols = 5
+rows = (len(kinds) + cols - 1) // cols
+sheet = Image.new('RGB', (756, 1428), '#f1f3f6')
+d = ImageDraw.Draw(sheet)
+for i, kind in enumerate(kinds):
+    x = 28 + (i % cols) * 144
+    y = 120 + (i // cols) * 440
+    ic = icon(kind).resize((96, 96), Image.Resampling.LANCZOS)
+    sheet.paste(ic, (x, y), ic)
+    d.text((x + 18, y + 110), kind.title(), fill='#263648')
+icon_sheet_bytes = jpg(sheet, 85)
+tall.crop((0, 0, 1080, 2280)).resize((540, 1140), Image.Resampling.LANCZOS).save(ROOT / 'wallpaper-preview.jpg', quality=88)
+sheet.save(ROOT / 'icon-assets.png')
+
+# description.xml: UTF-8 BOM + CRLF, like hwtTool-produced packages. Unique
+# title so the Themes app does not dedupe it against earlier versions.
+desc_lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+              '<HwTheme>',
+              '    <title>Sunset Sky 1.4</title>',
+              '    <title-cn>Sunset Sky 1.4</title-cn>',
+              '    <author>Independent design</author>',
+              '    <designer>Independent design</designer>',
+              '    <screen>FHD</screen>',
+              '    <version>9.1.2</version>',
+              '    <font>Sunset Sans</font>',
+              '    <font-cn>Sunset Sans</font-cn>',
+              '    <briefinfo>Sunset wallpaper, icons and font for Huawei EMUI 9.1 (P20 Lite).</briefinfo>',
+              '</HwTheme>']
+xml = b'\xef\xbb\xbf' + '\r\n'.join(desc_lines).encode('utf-8') + b'\r\n'
+
+launcher_xml = (b'<?xml version="1.0" encoding="UTF-8"?>\r\n<hwthemes>\r\n'
+                b'    <color name="workspace_app_text_color">#FFFFFFFF</color>\r\n'
+                b'    <color name="workspace_app_text_shadowColor">#8C000000</color>\r\n'
+                b'    <bool name="workspace_app_text_shadow">true</bool>\r\n'
+                b'</hwthemes>\r\n')
+hwext_xml = (b'\xef\xbb\xbf<?xml version="1.0" encoding="utf-8"?>\r\n'
+             b'<resources>\t\n    <color name="emui_accent">' + ACCENT.encode() + b'</color>\n</resources>')
+# sunset accent in the systemui skeleton as well
+systemui_xml = (BASE / 'systemui/theme.xml').read_bytes().replace(b'#33cccc', ACCENT.encode())
+
+# Colour-only dialer modules: real resource names from an EMUI 9.1 phone package,
+# tinted to match. (PNG skinning of the dialpad would need Huawei's assets, so
+# only colours are overridden here.)
+def res_xml(colors):
+    body = '\r\n'.join(f'    <color name="{n}">{c}</color>' for n, c in colors)
+    return b'\xef\xbb\xbf<?xml version="1.0" encoding="utf-8"?>\r\n<resources>\r\n' + body.encode() + b'\r\n</resources>\r\n'
+
+phone_xml = res_xml([
+    ('emui_text_dark', '#FF263648'),
+    ('emui_list_primary_default', '#DE263648'),
+    ('emui_primary_text_dark_disabled', '#80263648'),
+    ('divider_color', '#1A263648'),
+    ('incall_button_text_color_selected', '#FFFFFFFF'),
+    ('adn_list_empty_text_color', '#FF263648'),
+    ('dialer_theme_color', ACCENT.upper()),
+])
+incallui_xml = res_xml([
+    ('dialer_theme_color', ACCENT.upper()),
+    ('dialer_theme_color_dark', '#66FF7A45'),
+    ('dialtacts_theme_color', '#66FF7A45'),
+    ('incall_background_color', '@color/dialer_theme_color'),
+    ('dtmf_dialer_display_text', '#FFFFFFFF'),
+    ('dialpad_digits_text_color', '#FF263648'),
+    ('background_dialpad', '#FCFCFC'),
+    ('dialpad_background', '#B2000000'),
+    ('incall_dialpad_background', '#FFFFFF'),
+    ('incall_dialpad_background_pressed', '#CCFFD9C4'),
+    ('dialtacts_secondary_text_color', '#FF8A94A6'),
+    ('button_background_color', '@color/incall_background_color'),
+    ('button_selected_color', '@color/dialer_theme_color_dark'),
+    ('button_default_color', '#B3FFFFFF'),
+    ('button_disabled_color', '#33FFFFFF'),
+    ('actionbar_background_color', '@color/dialer_theme_color'),
+    ('incall_call_name_light_color', '#FFFFFFFF'),
+    ('incall_call_time_light_color', '#FFFFFFFF'),
+    ('incall_call_banner_text_color', '#80FFFFFF'),
+])
+
+fonts = build_fonts()
+
+out = ROOT / 'Sunset-Sky-EMUI91-v1.4.hwt'
+with ZipFile(out, 'w', ZIP_DEFLATED, compresslevel=9) as z:
+    zip_entry(z, 'description.xml', xml)
+    # unlock module as a plain folder, exactly like a real EMUI 9.1 package
+    dir_entry(z, 'unlock')
+    dir_entry(z, 'unlock/drawable-hdpi')
+    dir_entry(z, 'unlock/layout-hdpi')
+    for p in sorted((BASE / 'unlock').rglob('*')):
+        if p.is_file():
+            zip_entry(z, str(p.relative_to(BASE)), p.read_bytes())
+    dir_entry(z, 'wallpaper')
+    zip_entry(z, 'wallpaper/home_wallpaper_0.jpg', wall_bytes)
+    zip_entry(z, 'wallpaper/home_wallpaper_1.jpg', wall1_bytes)
+    zip_entry(z, 'wallpaper/unlock_wallpaper_0.jpg', wall_bytes)
+    dir_entry(z, 'preview')
+    zip_entry(z, 'preview/cover.jpg', jpg(ImageOps.fit(wall0, (1080, 1920)), 80))
+    zip_entry(z, 'preview/icon_small.jpg', jpg(ImageOps.fit(wall0, (714, 424)), 80))
+    zip_entry(z, 'preview/preview_wallpaper_0.jpg', jpg(ImageOps.fit(wall0, (1080, 2160)), 80))
+    zip_entry(z, 'preview/preview_unlock_0.jpg', jpg(ImageOps.fit(wall0, (756, 1428)), 80))
+    zip_entry(z, 'preview/preview_icons_0.jpg', icon_sheet_bytes)
+    # nested module archives
+    zip_entry(z, 'icons', icons.getvalue())
+    launcher_files = [('theme.xml', launcher_xml)]
+    for p in sorted((BASE / 'launcher').rglob('*')):
+        if p.is_file():
+            launcher_files.append((str(p.relative_to(BASE / 'launcher')), p.read_bytes()))
+    zip_entry(z, 'com.huawei.android.launcher', module_zip(launcher_files))
+    zip_entry(z, 'com.android.systemui', module_zip([('theme.xml', systemui_xml)]))
+    zip_entry(z, 'com.android.phone', module_zip([('theme.xml', phone_xml)]))
+    zip_entry(z, 'com.android.incallui', module_zip([('theme.xml', incallui_xml)]))
+    zip_entry(z, 'framework-res', module_zip([('theme.xml', (BASE / 'framework-res/theme.xml').read_bytes())]))
+    zip_entry(z, 'framework-res-hwext', module_zip([('theme.xml', hwext_xml)]))
+    # font package as plain files, like real themes (fonts/ is not zipped)
+    dir_entry(z, 'fonts')
+    for name, data in fonts.items():
+        zip_entry(z, 'fonts/' + name, data)
+
+# ---- self-checks ----
 with ZipFile(out) as z:
     assert z.testzip() is None
-    ET.fromstring(z.read('description.xml'))
-    assert ET.fromstring(z.read('unlock/theme.xml')).find('item').get('style') == 'slide'
-    with ZipFile(BytesIO(z.read('com.huawei.android.launcher'))) as module:
-        assert module.testzip() is None
-        ET.fromstring(module.read('theme.xml'))
-    assert all(z.getinfo(n).file_size < 1000000 for n in z.namelist() if n.startswith('wallpaper/'))
-    with ZipFile(BytesIO(z.read('icons'))) as nested:
-        assert nested.testzip() is None
-        for n in nested.namelist():
-            im=Image.open(BytesIO(nested.read(n))); assert im.size==(192,192); im.verify()
-    for n in ('wallpaper/home_wallpaper_0.jpg','wallpaper/unlock_wallpaper_0.jpg'):
-        im=Image.open(BytesIO(z.read(n))); assert im.size==(1080,2280); im.verify()
-print(out, out.stat().st_size, 'bytes; icons:', sum(map(len,mapping.values())))
+    names = z.namelist()
+    for req in ('description.xml', 'unlock/theme.xml', 'unlock/layout-hdpi/layout1.xml',
+                'wallpaper/home_wallpaper_0.jpg', 'wallpaper/home_wallpaper_1.jpg',
+                'wallpaper/unlock_wallpaper_0.jpg',
+                'preview/cover.jpg', 'preview/icon_small.jpg', 'preview/preview_wallpaper_0.jpg',
+                'preview/preview_unlock_0.jpg', 'preview/preview_icons_0.jpg', 'icons',
+                'com.huawei.android.launcher', 'com.android.systemui', 'com.android.phone',
+                'com.android.incallui', 'framework-res', 'framework-res-hwext',
+                'fonts/Roboto-Regular.ttf', 'fonts/Roboto-Bold.ttf', 'fonts/Roboto-Light.ttf',
+                'fonts/Roboto-Medium.ttf', 'fonts/Roboto-SemiBold.ttf', 'fonts/OFL-Inter.txt',
+                'fonts/pic_font_default.jpg'):
+        assert req in names, req
+    for d in ('unlock/', 'wallpaper/', 'preview/', 'fonts/'):
+        assert d in names, d
+    raw = z.read('description.xml')
+    assert raw.startswith(b'\xef\xbb\xbf')
+    root = ET.fromstring(raw[3:])
+    assert root.tag == 'HwTheme'
+    assert root.findtext('title') == 'Sunset Sky 1.4'
+    assert root.findtext('version') == '9.1.2'
+    assert root.findtext('font') == 'Sunset Sans'
+    unlock = ET.fromstring(z.read('unlock/theme.xml'))
+    assert 'amazing' in [i.get('style') for i in unlock.findall('item')]
+    with ZipFile(BytesIO(z.read('icons'))) as icons_z:
+        assert icons_z.testzip() is None
+        for n in icons_z.namelist():
+            im = Image.open(BytesIO(icons_z.read(n)))
+            assert (im.format, im.size) == ('PNG', (ICON, ICON)), n
+            im.verify()
+        assert 'com.huawei.browser.png' in icons_z.namelist()
+        assert 'icons/com.android.settings.png' in icons_z.namelist()
+    with ZipFile(BytesIO(z.read('com.huawei.android.launcher'))) as lz:
+        assert lz.testzip() is None
+        assert 'theme.xml' in lz.namelist()
+        assert 'res/drawable-xxhdpi/icon_mask.png' in lz.namelist()
+        ET.fromstring(lz.read('theme.xml'))
+    for mod in ('com.android.systemui', 'com.android.phone', 'com.android.incallui',
+                'framework-res', 'framework-res-hwext'):
+        with ZipFile(BytesIO(z.read(mod))) as m:
+            assert m.testzip() is None
+            assert 'theme.xml' in m.namelist()
+            ET.fromstring(m.read('theme.xml').lstrip(b'\xef\xbb\xbf'))
+    for n in names:
+        if n.startswith('fonts/') and n.endswith('.ttf'):
+            from fontTools.ttLib import TTFont
+            TTFont(BytesIO(z.read(n)))  # parses as a real font
+    with Image.open(BytesIO(z.read('fonts/pic_font_default.jpg'))) as im:
+        assert im.format == 'JPEG'
+        im.verify()
+    for n in ('wallpaper/home_wallpaper_0.jpg', 'wallpaper/home_wallpaper_1.jpg', 'wallpaper/unlock_wallpaper_0.jpg'):
+        assert z.getinfo(n).file_size < 1000000
+        im = Image.open(BytesIO(z.read(n)))
+        assert (im.format, im.size) == ('JPEG', (1080, 2280))
+        im.verify()
+
+print(out, out.stat().st_size, 'bytes; icon kinds:', len(mapping), '; icon files:', sum(map(len, mapping.values())))

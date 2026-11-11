@@ -1,0 +1,58 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<layout frameRate="30" version="3.0" screenwidth="1080">
+
+	<!--时间-->
+	<image x="214" y="250+system.unlocker0_moveY" w="138" h="204" src="'time_'+system.time.hour1+'.png'"/>
+	<image x="352" y="250+system.unlocker0_moveY" w="138" h="204" src="'time_'+system.time.hour2+'.png'"/>
+	<image x="490" y="250+system.unlocker0_moveY" w="100" h="204" src="time_dot.png"/>
+	<image x="590" y="250+system.unlocker0_moveY" w="138" h="204" src="'time_'+system.time.min1+'.png'"/>
+	<image x="728" y="250+system.unlocker0_moveY" w="138" h="204" src="'time_'+system.time.min2+'.png'"/> 
+
+	<!--日期-->
+	<text x="0" y="480+system.unlocker0_moveY" w="1080" h="100" align="center" size="16" color="#ffffff" src="system.date+' '+system.time.ampm" visible="system.time.showampm"/>
+	<text x="0" y="480+system.unlocker0_moveY" w="1080" h="100" align="center" size="16" color="#ffffff" src="system.date" visible="!system.time.showampm"/>
+    <text x="500" y="11430" w="554" h="80" visible="system.time.showampm"  size="14" color="#ffffff" src="system.time.ampm"/>
+
+	<!--未读电话和短信-->
+	<text x="0" y="720+system.unlocker0_moveY" w="1080" h="100" align="center" size="16" color="#ffffff" src="system.call.text" visible="system.call.count gt 0"/>
+	<text x="0" y="640+system.unlocker0_moveY" w="1080" h="100" align="center" size="16" color="#ffffff" src="system.message.text" visible="system.message.count gt 0"/>
+
+	<!--充电显示-->
+	<text x="0" y="560+system.unlocker0_moveY" w="1080" h="100" align="center" size="16" color="#ffffff" src="system.charge.text" visible="system.charge.show"/>
+	<text x="240" y="560+system.unlocker0_moveY" w="600" h="100" align="center" size="16" color="#ffffff" src="system.ownerinfo.text" visible="!system.charge.show and system.ownerinfo.show" ellipsize="marquee"/>
+
+	<!--功能区-->
+	<image x="0" y="system.screen_height-150" w="1080" h="100" src="btn.png"/> 
+	<image x="0" y="system.screen_height-200+system.unlocker0_moveY" w="1080" h="100" src="arrow.png"/> 
+
+
+
+    <!-- Unlock Zone -->
+    <unlocker name="unlocker0" visible="system.charge.show or !system.charge.show">
+        <StartPoint x="440" y="system.screen_height-200" w="200" h="200">
+        </StartPoint>
+	    <EndPoint x="0" y="0" w="1080" h="system.screen_height-400">
+		    <Path x="0" y="-300"/>
+                <Intent type="default"/>
+        </EndPoint>
+    </unlocker>	
+
+    <unlocker name="unlocker1" visible="system.charge.show or !system.charge.show">
+        <StartPoint x="0" y="system.screen_height-200" w="200" h="200">
+        </StartPoint>
+	    <EndPoint x="0" y="system.screen_height-200" w="200" h="200">
+		    <Path x="0" y="0"/>
+                <Intent type="calllog"/>
+        </EndPoint>
+    </unlocker>
+
+    <unlocker name="unlocker2" visible="system.charge.show or !system.charge.show">
+        <StartPoint x="880" y="system.screen_height-200" w="200" h="200">
+        </StartPoint>
+	    <EndPoint x="880" y="system.screen_height-200" w="200" h="200">
+		    <Path x="0" y="0"/>
+                <Intent type="camera"/>
+        </EndPoint>
+    </unlocker>
+	
+</layout>
