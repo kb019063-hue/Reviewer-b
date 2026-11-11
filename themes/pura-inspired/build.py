@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Build Sunset Sky v1.3 — an EMUI 9.1 (ANE-LX1 / P20 Lite) .hwt theme.
+"""Build Sunset Sky v1.4 — an EMUI 9.1 (ANE-LX1 / P20 Lite) .hwt theme.
 
-v1.3 keeps the v1.2 structure that matches a known-working EMUI 9.1 package
-(BOM + CRLF description.xml with EMUI-line version, 256x256 icons at the root
-of the nested icons zip, the standard "amazing" unlock module, framework-res /
-framework-res-hwext / systemui / launcher modules, hwtTool-style zip directory
-entries) and improves coverage: a 14-app icon set, launcher icon masks, a second
-home-screen page wallpaper, and a sunset accent colour. Structural skeleton
-under base/ comes from a real EMUI 9.1 theme; all artwork is generated here.
+v1.4 keeps the v1.2/v1.3 structure that matches a known-working EMUI 9.1
+package (BOM + CRLF description.xml with EMUI-line version, 256x256 icons at
+the root of the nested icons zip, the standard "amazing" unlock module,
+framework-res / framework-res-hwext / systemui / launcher modules, hwtTool-style
+zip directory entries) and adds: a 14-app icon set with launcher icon masks,
+two home-screen wallpapers, a sunset accent colour, an Inter-based font package
+under fonts/ (Roboto-style filenames + pic_font_default.jpg, like the Vesper
+theme in this repo), and colour-only com.android.phone / com.android.incallui
+modules so the dialer keypad follows the theme. Structural skeleton under base/
+comes from a real EMUI 9.1 theme; all artwork is generated here.
+
+Requires Pillow and fonttools.
 """
 from pathlib import Path
 from io import BytesIO
@@ -155,6 +160,49 @@ def module_zip(files):
     return b.getvalue()
 
 
+FONT_WEIGHTS = {300: 'Roboto-Light.ttf', 400: 'Roboto-Regular.ttf', 500: 'Roboto-Medium.ttf',
+                600: 'Roboto-SemiBold.ttf', 700: 'Roboto-Bold.ttf'}
+
+
+def build_fonts():
+    """Instantiate static Inter weights under EMUI's Roboto-style font filenames,
+    plus the license and the font preview card (pic_font_default.jpg)."""
+    from fontTools.ttLib import TTFont
+    from fontTools.varLib.instancer import instantiateVariableFont
+    src = ROOT / 'source/fonts/Inter-Variable.ttf'
+    var = TTFont(src)
+    axes = {a.axisTag for a in var['fvar'].axes}
+    out = {}
+    for weight, filename in FONT_WEIGHTS.items():
+        loc = {'wght': weight}
+        if 'opsz' in axes:
+            loc['opsz'] = 14
+        static = instantiateVariableFont(var, loc, inplace=False)
+        b = BytesIO()
+        static.save(b)
+        out[filename] = b.getvalue()
+    out['OFL-Inter.txt'] = (ROOT / 'source/fonts/OFL-Inter.txt').read_bytes()
+    # font preview card shown by the Themes app font picker
+    card = Image.new('RGB', (500, 520), '#263648')
+    cd = ImageDraw.Draw(card)
+    cd.rounded_rectangle((0, 0, 499, 519), outline='#ff7a45', width=2)
+    import io as _io
+    reg = TTFont(_io.BytesIO(out['Roboto-Regular.ttf']))
+    from PIL import ImageFont
+    f_big = ImageFont.truetype(_io.BytesIO(out['Roboto-SemiBold.ttf']), 34)
+    f_mid = ImageFont.truetype(_io.BytesIO(out['Roboto-Regular.ttf']), 30)
+    f_small = ImageFont.truetype(_io.BytesIO(out['Roboto-Regular.ttf']), 18)
+    cd.text((34, 40), 'Sunset Sans', font=f_big, fill='#F6F1E9')
+    cd.text((34, 104), 'Aa Bb Cc 123', font=f_mid, fill='#C9C0B5')
+    cd.text((34, 156), 'Light · Regular · Medium · SemiBold · Bold', font=f_small, fill='#ff7a45')
+    cd.text((34, 330), 'The quick brown fox jumps', font=f_small, fill='#C9C0B5')
+    cd.text((34, 372), '0123456789 !@#$%*()?', font=f_small, fill='#9B9188')
+    b = BytesIO()
+    card.save(b, 'JPEG', quality=92)
+    out['pic_font_default.jpg'] = b.getvalue()
+    return out
+
+
 # package-name -> icon mapping (Huawei dialer uses the contacts activity)
 mapping = {'phone': ['com.android.phone', 'com.android.dialer', 'com.android.contacts.activities.DialtactsActivity'],
            'contacts': ['com.android.contacts'],
@@ -210,15 +258,15 @@ sheet.save(ROOT / 'icon-assets.png')
 # title so the Themes app does not dedupe it against earlier versions.
 desc_lines = ['<?xml version="1.0" encoding="UTF-8"?>',
               '<HwTheme>',
-              '    <title>Sunset Sky 1.3</title>',
-              '    <title-cn>Sunset Sky 1.3</title-cn>',
+              '    <title>Sunset Sky 1.4</title>',
+              '    <title-cn>Sunset Sky 1.4</title-cn>',
               '    <author>Independent design</author>',
               '    <designer>Independent design</designer>',
               '    <screen>FHD</screen>',
-              '    <version>9.1.1</version>',
-              '    <font>Default</font>',
-              '    <font-cn>Default</font-cn>',
-              '    <briefinfo>Sunset wallpaper and icons for Huawei EMUI 9.1 (P20 Lite).</briefinfo>',
+              '    <version>9.1.2</version>',
+              '    <font>Sunset Sans</font>',
+              '    <font-cn>Sunset Sans</font-cn>',
+              '    <briefinfo>Sunset wallpaper, icons and font for Huawei EMUI 9.1 (P20 Lite).</briefinfo>',
               '</HwTheme>']
 xml = b'\xef\xbb\xbf' + '\r\n'.join(desc_lines).encode('utf-8') + b'\r\n'
 
@@ -232,7 +280,47 @@ hwext_xml = (b'\xef\xbb\xbf<?xml version="1.0" encoding="utf-8"?>\r\n'
 # sunset accent in the systemui skeleton as well
 systemui_xml = (BASE / 'systemui/theme.xml').read_bytes().replace(b'#33cccc', ACCENT.encode())
 
-out = ROOT / 'Sunset-Sky-EMUI91-v1.3.hwt'
+# Colour-only dialer modules: real resource names from an EMUI 9.1 phone package,
+# tinted to match. (PNG skinning of the dialpad would need Huawei's assets, so
+# only colours are overridden here.)
+def res_xml(colors):
+    body = '\r\n'.join(f'    <color name="{n}">{c}</color>' for n, c in colors)
+    return b'\xef\xbb\xbf<?xml version="1.0" encoding="utf-8"?>\r\n<resources>\r\n' + body.encode() + b'\r\n</resources>\r\n'
+
+phone_xml = res_xml([
+    ('emui_text_dark', '#FF263648'),
+    ('emui_list_primary_default', '#DE263648'),
+    ('emui_primary_text_dark_disabled', '#80263648'),
+    ('divider_color', '#1A263648'),
+    ('incall_button_text_color_selected', '#FFFFFFFF'),
+    ('adn_list_empty_text_color', '#FF263648'),
+    ('dialer_theme_color', ACCENT.upper()),
+])
+incallui_xml = res_xml([
+    ('dialer_theme_color', ACCENT.upper()),
+    ('dialer_theme_color_dark', '#66FF7A45'),
+    ('dialtacts_theme_color', '#66FF7A45'),
+    ('incall_background_color', '@color/dialer_theme_color'),
+    ('dtmf_dialer_display_text', '#FFFFFFFF'),
+    ('dialpad_digits_text_color', '#FF263648'),
+    ('background_dialpad', '#FCFCFC'),
+    ('dialpad_background', '#B2000000'),
+    ('incall_dialpad_background', '#FFFFFF'),
+    ('incall_dialpad_background_pressed', '#CCFFD9C4'),
+    ('dialtacts_secondary_text_color', '#FF8A94A6'),
+    ('button_background_color', '@color/incall_background_color'),
+    ('button_selected_color', '@color/dialer_theme_color_dark'),
+    ('button_default_color', '#B3FFFFFF'),
+    ('button_disabled_color', '#33FFFFFF'),
+    ('actionbar_background_color', '@color/dialer_theme_color'),
+    ('incall_call_name_light_color', '#FFFFFFFF'),
+    ('incall_call_time_light_color', '#FFFFFFFF'),
+    ('incall_call_banner_text_color', '#80FFFFFF'),
+])
+
+fonts = build_fonts()
+
+out = ROOT / 'Sunset-Sky-EMUI91-v1.4.hwt'
 with ZipFile(out, 'w', ZIP_DEFLATED, compresslevel=9) as z:
     zip_entry(z, 'description.xml', xml)
     # unlock module as a plain folder, exactly like a real EMUI 9.1 package
@@ -260,8 +348,14 @@ with ZipFile(out, 'w', ZIP_DEFLATED, compresslevel=9) as z:
             launcher_files.append((str(p.relative_to(BASE / 'launcher')), p.read_bytes()))
     zip_entry(z, 'com.huawei.android.launcher', module_zip(launcher_files))
     zip_entry(z, 'com.android.systemui', module_zip([('theme.xml', systemui_xml)]))
+    zip_entry(z, 'com.android.phone', module_zip([('theme.xml', phone_xml)]))
+    zip_entry(z, 'com.android.incallui', module_zip([('theme.xml', incallui_xml)]))
     zip_entry(z, 'framework-res', module_zip([('theme.xml', (BASE / 'framework-res/theme.xml').read_bytes())]))
     zip_entry(z, 'framework-res-hwext', module_zip([('theme.xml', hwext_xml)]))
+    # font package as plain files, like real themes (fonts/ is not zipped)
+    dir_entry(z, 'fonts')
+    for name, data in fonts.items():
+        zip_entry(z, 'fonts/' + name, data)
 
 # ---- self-checks ----
 with ZipFile(out) as z:
@@ -272,17 +366,21 @@ with ZipFile(out) as z:
                 'wallpaper/unlock_wallpaper_0.jpg',
                 'preview/cover.jpg', 'preview/icon_small.jpg', 'preview/preview_wallpaper_0.jpg',
                 'preview/preview_unlock_0.jpg', 'preview/preview_icons_0.jpg', 'icons',
-                'com.huawei.android.launcher', 'com.android.systemui', 'framework-res',
-                'framework-res-hwext'):
+                'com.huawei.android.launcher', 'com.android.systemui', 'com.android.phone',
+                'com.android.incallui', 'framework-res', 'framework-res-hwext',
+                'fonts/Roboto-Regular.ttf', 'fonts/Roboto-Bold.ttf', 'fonts/Roboto-Light.ttf',
+                'fonts/Roboto-Medium.ttf', 'fonts/Roboto-SemiBold.ttf', 'fonts/OFL-Inter.txt',
+                'fonts/pic_font_default.jpg'):
         assert req in names, req
-    for d in ('unlock/', 'wallpaper/', 'preview/'):
+    for d in ('unlock/', 'wallpaper/', 'preview/', 'fonts/'):
         assert d in names, d
     raw = z.read('description.xml')
     assert raw.startswith(b'\xef\xbb\xbf')
     root = ET.fromstring(raw[3:])
     assert root.tag == 'HwTheme'
-    assert root.findtext('title') == 'Sunset Sky 1.3'
-    assert root.findtext('version') == '9.1.1'
+    assert root.findtext('title') == 'Sunset Sky 1.4'
+    assert root.findtext('version') == '9.1.2'
+    assert root.findtext('font') == 'Sunset Sans'
     unlock = ET.fromstring(z.read('unlock/theme.xml'))
     assert 'amazing' in [i.get('style') for i in unlock.findall('item')]
     with ZipFile(BytesIO(z.read('icons'))) as icons_z:
@@ -298,11 +396,19 @@ with ZipFile(out) as z:
         assert 'theme.xml' in lz.namelist()
         assert 'res/drawable-xxhdpi/icon_mask.png' in lz.namelist()
         ET.fromstring(lz.read('theme.xml'))
-    for mod in ('com.android.systemui', 'framework-res', 'framework-res-hwext'):
+    for mod in ('com.android.systemui', 'com.android.phone', 'com.android.incallui',
+                'framework-res', 'framework-res-hwext'):
         with ZipFile(BytesIO(z.read(mod))) as m:
             assert m.testzip() is None
             assert 'theme.xml' in m.namelist()
             ET.fromstring(m.read('theme.xml').lstrip(b'\xef\xbb\xbf'))
+    for n in names:
+        if n.startswith('fonts/') and n.endswith('.ttf'):
+            from fontTools.ttLib import TTFont
+            TTFont(BytesIO(z.read(n)))  # parses as a real font
+    with Image.open(BytesIO(z.read('fonts/pic_font_default.jpg'))) as im:
+        assert im.format == 'JPEG'
+        im.verify()
     for n in ('wallpaper/home_wallpaper_0.jpg', 'wallpaper/home_wallpaper_1.jpg', 'wallpaper/unlock_wallpaper_0.jpg'):
         assert z.getinfo(n).file_size < 1000000
         im = Image.open(BytesIO(z.read(n)))
