@@ -1,4 +1,4 @@
-"""Check the shipped v1.2 archive itself; not a Huawei compatibility test."""
+"""Check the shipped v1.3 archive itself; not a Huawei compatibility test."""
 from io import BytesIO
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -6,7 +6,7 @@ from zipfile import ZipFile
 import unittest
 from PIL import Image
 
-ARCHIVE = Path(__file__).resolve().parent / 'Sunset-Sky-EMUI91-v1.2.hwt'
+ARCHIVE = Path(__file__).resolve().parent / 'Sunset-Sky-EMUI91-v1.3.hwt'
 
 
 class ThemePackageTest(unittest.TestCase):
@@ -18,7 +18,7 @@ class ThemePackageTest(unittest.TestCase):
                         'framework-res', 'framework-res-hwext',
                         'unlock/theme.xml', 'unlock/layout-hdpi/layout1.xml',
                         'unlock/drawable-hdpi/arrow.png',
-                        'wallpaper/home_wallpaper_0.jpg', 'wallpaper/unlock_wallpaper_0.jpg',
+                        'wallpaper/home_wallpaper_0.jpg', 'wallpaper/home_wallpaper_1.jpg', 'wallpaper/unlock_wallpaper_0.jpg',
                         'preview/cover.jpg', 'preview/icon_small.jpg',
                         'preview/preview_wallpaper_0.jpg', 'preview/preview_unlock_0.jpg',
                         'preview/preview_icons_0.jpg'}
@@ -31,8 +31,8 @@ class ThemePackageTest(unittest.TestCase):
             self.assertTrue(raw.startswith(b'\xef\xbb\xbf'), 'description.xml should have a UTF-8 BOM')
             desc = ET.fromstring(raw[3:])
             self.assertEqual(desc.tag, 'HwTheme')
-            self.assertEqual(desc.findtext('title'), 'Sunset Sky 1.2')
-            self.assertEqual(desc.findtext('version'), '9.1.0')
+            self.assertEqual(desc.findtext('title'), 'Sunset Sky 1.3')
+            self.assertEqual(desc.findtext('version'), '9.1.1')
             self.assertEqual(desc.findtext('screen'), 'FHD')
 
             unlock = ET.fromstring(theme.read('unlock/theme.xml'))
@@ -42,20 +42,26 @@ class ThemePackageTest(unittest.TestCase):
             with ZipFile(BytesIO(theme.read('icons'))) as icons:
                 self.assertIsNone(icons.testzip())
                 self.assertIn('com.android.contacts.activities.DialtactsActivity.png', icons.namelist())
+                self.assertIn('com.huawei.browser.png', icons.namelist())
+                self.assertGreaterEqual(len(icons.namelist()), 30)  # 21 names x root + icons/ prefix
                 self.assertIn('icons/com.android.settings.png', icons.namelist())
                 for name in icons.namelist():
                     with Image.open(BytesIO(icons.read(name))) as im:
                         self.assertEqual((im.format, im.size), ('PNG', (256, 256)))
                         im.verify()
 
-            for mod in ('com.huawei.android.launcher', 'com.android.systemui',
-                        'framework-res', 'framework-res-hwext'):
+            with ZipFile(BytesIO(theme.read('com.huawei.android.launcher'))) as lz:
+                self.assertIsNone(lz.testzip())
+                self.assertIn('theme.xml', lz.namelist())
+                self.assertIn('res/drawable-xxhdpi/icon_mask.png', lz.namelist())
+                ET.fromstring(lz.read('theme.xml'))
+            for mod in ('com.android.systemui', 'framework-res', 'framework-res-hwext'):
                 with ZipFile(BytesIO(theme.read(mod))) as m:
                     self.assertIsNone(m.testzip())
                     self.assertIn('theme.xml', m.namelist())
                     ET.fromstring(m.read('theme.xml').lstrip(b'\xef\xbb\xbf'))
 
-            for name in ('wallpaper/home_wallpaper_0.jpg', 'wallpaper/unlock_wallpaper_0.jpg'):
+            for name in ('wallpaper/home_wallpaper_0.jpg', 'wallpaper/home_wallpaper_1.jpg', 'wallpaper/unlock_wallpaper_0.jpg'):
                 self.assertLess(theme.getinfo(name).file_size, 1000000)
                 with Image.open(BytesIO(theme.read(name))) as im:
                     self.assertEqual((im.format, im.size), ('JPEG', (1080, 2280)))
