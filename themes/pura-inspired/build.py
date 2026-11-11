@@ -43,10 +43,10 @@ def icon(kind):
 def png(im):
     b=BytesIO(); im.save(b,'PNG',optimize=True); return b.getvalue()
 
-def jpg(im):
-    b=BytesIO(); im.convert('RGB').save(b,'JPEG',quality=90,optimize=True); return b.getvalue()
+def jpg(im, quality=90):
+    b=BytesIO(); im.convert('RGB').save(b,'JPEG',quality=quality,optimize=True); return b.getvalue()
 
-mapping={'phone':['com.android.phone','com.android.dialer'], 'messages':['com.android.mms'], 'camera':['com.huawei.camera','com.android.camera'], 'gallery':['com.android.gallery3d'], 'settings':['com.android.settings'], 'music':['com.android.mediacenter']}
+mapping={'phone':['com.android.phone','com.android.dialer','com.android.contacts.activities.DialtactsActivity'], 'messages':['com.android.mms'], 'camera':['com.huawei.camera','com.android.camera'], 'gallery':['com.android.gallery3d'], 'settings':['com.android.settings'], 'music':['com.android.mediacenter']}
 wall=ImageOps.fit(Image.open(ROOT/'source/sunset.png').convert('RGB'),(1080,2280),Image.Resampling.LANCZOS)
 wall_bytes=jpg(wall); assert len(wall_bytes)<1000000
 icons=BytesIO()
@@ -61,20 +61,37 @@ for i,kind in enumerate(mapping):
     d.text((x+30,y+140),kind.title(),fill='#263648')
 sheet.save(ROOT/'icon-assets.png')
 wall.resize((540,1140),Image.Resampling.LANCZOS).save(ROOT/'wallpaper-preview.jpg',quality=88)
-xml=b'''<?xml version="1.0" encoding="UTF-8"?>\n<HwTheme><title>Sunset Sky</title><title-cn>Sunset Sky</title-cn><author>Independent design</author><designer>Independent design</designer><screen>FHD</screen><version>1.0</version><font>default</font><font-cn>default</font-cn></HwTheme>'''
-# Partial theme: no speculative lock engine or global colour overrides.
-out=ROOT/'Sunset-Sky-EMUI91.hwt'
+xml='''<?xml version="1.0" encoding="UTF-8"?>\n<HwTheme><title>Sunset Sky</title><title-cn>Sunset Sky</title-cn><author>Independent design</author><designer>Independent design</designer><screen>FHD</screen><version>1.1.0</version><font>Default</font><font-cn>默认</font-cn></HwTheme>'''.encode('utf-8')
+# Use a regular system slide lock, not a custom or fake lockscreen.
+unlock = b'<?xml version="1.0" encoding="UTF-8"?><HWTheme><item style="slide"/></HWTheme>'
+launcher_xml = b'''<?xml version="1.0" encoding="UTF-8"?><hwthemes>
+<color name="workspace_app_text_color">#FFFFFFFF</color>
+<bool name="workspace_app_text_shadow">true</bool>
+</hwthemes>'''
+launcher = BytesIO()
+with ZipFile(launcher, 'w', ZIP_DEFLATED) as z:
+    z.writestr('theme.xml', launcher_xml)
+out=ROOT/'Sunset-Sky-EMUI91-v1.1.hwt'
 with ZipFile(out,'w',ZIP_DEFLATED,compresslevel=9) as z:
     z.writestr('description.xml',xml)
+    z.writestr('unlock/theme.xml', unlock)
+    z.writestr('com.huawei.android.launcher', launcher.getvalue())
     z.writestr('wallpaper/home_wallpaper_0.jpg',wall_bytes)
     z.writestr('wallpaper/unlock_wallpaper_0.jpg',wall_bytes)
     z.writestr('icons',icons.getvalue())
-    z.writestr('preview/cover.jpg',jpg(ImageOps.fit(wall,(1080,1920))))
-    z.writestr('preview/preview_wallpaper_0.jpg',jpg(ImageOps.fit(wall,(1080,2160))))
-    z.writestr('preview/preview_icons_0.jpg',jpg(sheet))
+    # Artwork-only previews, without simulated widgets or icons.
+    z.writestr('preview/cover.jpg',jpg(ImageOps.fit(wall,(1080,1920)), 80))
+    z.writestr('preview/preview_wallpaper_0.jpg',jpg(ImageOps.fit(wall,(1080,2160)), 80))
+    z.writestr('preview/preview_unlock_0.jpg',jpg(ImageOps.fit(wall,(1080,2160)), 80))
+    z.writestr('preview/preview_icons_0.jpg',jpg(sheet, 85))
 with ZipFile(out) as z:
     assert z.testzip() is None
     ET.fromstring(z.read('description.xml'))
+    assert ET.fromstring(z.read('unlock/theme.xml')).find('item').get('style') == 'slide'
+    with ZipFile(BytesIO(z.read('com.huawei.android.launcher'))) as module:
+        assert module.testzip() is None
+        ET.fromstring(module.read('theme.xml'))
+    assert all(z.getinfo(n).file_size < 1000000 for n in z.namelist() if n.startswith('wallpaper/'))
     with ZipFile(BytesIO(z.read('icons'))) as nested:
         assert nested.testzip() is None
         for n in nested.namelist():
