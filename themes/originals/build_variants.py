@@ -418,15 +418,16 @@ def argb(c):
     return (r, g, b, a)
 
 
-def make_mockup(spec, wall0, ico):
+def make_mockup(spec, wall0, ico, clock=True):
     """Home-screen mockup (540x1140) drawn from the real wallpaper + icons."""
     MW, MH = 540, 1140
     canvas = wall0.resize((MW, MH), Image.Resampling.LANCZOS).convert('RGBA')
     text, sub, accent = hex2rgb(spec['text']), hex2rgb(spec['sub']), spec['accent']
     d = ImageDraw.Draw(canvas)
     # clock + date
-    d.text((MW / 2, 118), '9:41', font=font(92, 'Light'), fill=text + (255,), anchor='mm')
-    d.text((MW / 2, 186), 'Monday, 12 November', font=font(24), fill=sub + (255,), anchor='mm')
+    if clock:  # placeholder clock; themes with their own greeting pass clock=False
+        d.text((MW / 2, 118), '9:41', font=font(92, 'Light'), fill=text + (255,), anchor='mm')
+        d.text((MW / 2, 186), 'Monday, 12 November', font=font(24), fill=sub + (255,), anchor='mm')
     # 4 x 3 grid of the first twelve mapped apps
     names = ['Phone', 'Contacts', 'Messages', 'Camera', 'Gallery', 'Settings',
              'Music', 'Browser', 'Clock', 'Calendar', 'Email', 'Files']
