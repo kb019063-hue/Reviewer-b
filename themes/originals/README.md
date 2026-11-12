@@ -11,8 +11,8 @@ glow/ribbon/star/ring accents, and a 14-app icon set per theme (256×256 PNGs).
 | `Glacier-EMUI91.hwt` | light icy-blue gradient, white icon plates with coloured glyphs | blue `#2563EB` |
 | `Mono-Ink-EMUI91.hwt` | near-black minimal, pinstripes + rings, white line icons | white |
 
-Preview images: `<key>-preview.jpg` (wallpaper) and `<key>-icons.png` (icon
-sheet) next to the archives.
+Preview images: `<key>-preview.jpg` (home-screen mockup) and `<key>-icons.png`
+(icon grid) next to the archives.
 
 ## Fixes vs. the Sunset Sky v1.4 package (learned from on-device screenshots)
 
@@ -24,6 +24,18 @@ sheet) next to the archives.
    `notification_shade_background_color`, `system_bar_background_semi_transparent`
    all set to a solid panel colour per theme) with matching text colours, so the
    panel is readable instead of showing the wallpaper through the text.
+
+## v2 changes (rebuilt from review of v1 renders)
+
+- Icons are centred in their 256×256 canvas and use full-bleed rounded plates
+  the size of native icons (no transparent margin, no masks).
+- Aurora Night's wallpaper uses soft curtains instead of zigzag ribbons; Ember
+  Dusk gets a low glow. Glacier and Mono Ink keep their v1 looks.
+- `*-preview.jpg` is now a home-screen mockup built from the real wallpaper and
+  icons; `*-icons.png` is an icon grid on the theme panel colour.
+- Fixed ARGB parsing of `#AARRGGBB` colours in the preview code.
+
+Visual checks here are renders only. They do not prove how EMUI draws them.
 
 ## Package structure
 

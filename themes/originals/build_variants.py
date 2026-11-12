@@ -12,6 +12,17 @@ themes/pura-inspired), with two fixes learned from on-device feedback:
   * Opaque quick-settings / notification shade background with readable text
     colours per theme, instead of a transparent panel over the wallpaper.
 
+v2 fixes (from reviewing the v1 renders):
+
+  * Icon artwork was drawn around (96, 96) instead of the canvas centre, so
+    every themed icon sat in the top-left quadrant. Now centred.
+  * Icon plates are full-bleed squircles the size of native icons (the old
+    168 px plate with a transparent margin looked smaller and "boxed").
+  * 8-digit colours are Android #AARRGGBB; the preview code read the alpha
+    byte as red, which produced the red sheet. Parsing is now ARGB-aware.
+  * Aurora uses soft undulating curtains instead of zigzag polylines.
+  * Previews are home-screen mockups built from the real wallpaper and icons.
+
 Requires Pillow.
 """
 from io import BytesIO
@@ -30,7 +41,11 @@ W, H = 1080, 2280
 
 
 def hex2rgb(h):
+    """'#RRGGBB' -> (r,g,b). 8-digit strings are Android '#AARRGGBB' and the
+    alpha byte is dropped (the old code read the alpha as red: red sheets)."""
     h = h.lstrip('#')
+    if len(h) == 8:
+        h = h[2:]
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
 
 
@@ -162,19 +177,31 @@ def pinstripes(base, spacing=56, color='#FFFFFF', alpha=7, angle=-30):
     return Image.alpha_composite(base.convert('RGBA'), ov).convert('RGB')
 
 
+def curtain(base, y0, amp, wavelen, phase, width, color, alpha, blur):
+    """One soft aurora curtain: a gently undulating band, not a zigzag."""
+    import math
+    pts = [(x, y0 + amp * math.sin(2 * math.pi * x / wavelen + phase))
+           for x in range(-80, W + 120, 30)]
+    return ribbon(base, pts, color, width, alpha, blur)
+
+
 def make_wallpaper(spec):
     kind = spec['wall']
     if kind == 'aurora':
-        w = gradient((W, H), [(0, '#070B1D'), (0.42, '#1B1440'), (0.72, '#123B52'), (1, '#0A2E3E')], 115)
-        w = ribbon(w, [(0, 1500), (300, 1250), (620, 1420), (1080, 1050)], '#2DD4BF', 150, 90, 60)
-        w = ribbon(w, [(0, 1650), (380, 1420), (760, 1600), (1080, 1260)], '#818CF8', 110, 80, 55)
-        w = glow_blob(w, (500, 1750, 1400, 2600), '#34D399', 70, 220)
-        w = stars(w, 130, 7)
+        w = gradient((W, H), [(0, '#050818'), (0.38, '#15123A'), (0.70, '#0E2F45'), (1, '#07222E')], 100)
+        w = glow_blob(w, (-300, 900, 1400, 1700), '#1E3A8A', 45, 260)
+        w = curtain(w, 1180, 120, 1300, 0.4, 210, '#2DD4BF', 50, 90)
+        w = curtain(w, 1320, 150, 1100, 2.2, 150, '#818CF8', 42, 80)
+        w = curtain(w, 1450, 110, 1600, 1.1, 90, '#6EE7B7', 36, 60)
+        w = curtain(w, 1080, 90, 900, 3.4, 60, '#A5F3FC', 22, 40)
+        w = glow_blob(w, (300, 1900, 1300, 2700), '#0F766E', 60, 240)
+        w = stars(w, 90, 7, max_alpha=150, size=(1, 2))
     elif kind == 'ember':
-        w = gradient((W, H), [(0, '#0D0705'), (0.5, '#3A140A'), (0.82, '#7A2A10'), (1, '#260C07')], 90)
-        w = glow_blob(w, (-200, 1500, 900, 2600), '#F97316', 110, 260)
-        w = glow_blob(w, (500, 1900, 1500, 2800), '#DC2626', 60, 200)
-        w = stars(w, 90, 11, color='#FFD9A0', max_alpha=170, size=(1, 2))
+        w = gradient((W, H), [(0, '#0B0604'), (0.45, '#2A0F08'), (0.80, '#6B2110'), (1, '#1C0905')], 90)
+        w = glow_blob(w, (-250, 1650, 1000, 2900), '#F97316', 95, 300)
+        w = glow_blob(w, (450, 1950, 1450, 3000), '#DC2626', 50, 220)
+        w = glow_blob(w, (380, 1180, 700, 1500), '#FB923C', 30, 90)  # low sun
+        w = stars(w, 60, 11, color='#FFD9A0', max_alpha=130, size=(1, 2))
     elif kind == 'glacier':
         w = gradient((W, H), [(0, '#FFFFFF'), (0.55, '#EAF4FF'), (1, '#CFE6FA')], 90)
         w = glow_blob(w, (600, -300, 1700, 900), '#93C5FD', 90, 240)
@@ -225,11 +252,15 @@ def icon(kind, plate, glyph):
     im = Image.new('RGBA', (ICON * S, ICON * S))
     d = ImageDraw.Draw(im)
 
+    # Glyph coordinates were drawn around (96, 96); OFF moves them to the
+    # true centre (128, 128) of the 256 px canvas.
+    OFF = 32
+
     def box(b):
-        return tuple(round(x * S) for x in b)
+        return tuple(round((x + OFF) * S) for x in b)
 
     def line(points, fill, width=8):
-        d.line([(int(x * S), int(y * S)) for x, y in points], fill=fill, width=width * S, joint='curve')
+        d.line([(int((x + OFF) * S), int((y + OFF) * S)) for x, y in points], fill=fill, width=width * S, joint='curve')
 
     def ellipse(b, fill=None, outline=None, width=1):
         d.ellipse(box(b), fill=fill, outline=outline, width=width * S)
@@ -238,12 +269,13 @@ def icon(kind, plate, glyph):
         d.rounded_rectangle(box(b), r * S, fill=fill, outline=outline, width=width * S)
 
     def polygon(points, fill):
-        d.polygon([(int(x * S), int(y * S)) for x, y in points], fill=fill)
+        d.polygon([(int((x + OFF) * S), int((y + OFF) * S)) for x, y in points], fill=fill)
 
     G = rgba(glyph)
     P = rgba(plate)
     D = rgba(blend(plate, glyph, 0.55))  # detail shade
-    rect((12, 12, 180, 180), 42, P)
+    # Full-bleed plate, same size as native EMUI icons (no transparent margin).
+    d.rounded_rectangle((0, 0, ICON * S - 1, ICON * S - 1), 60 * S, fill=P)
     if kind == 'phone':
         line([(49, 53), (48, 70), (55, 90), (68, 108), (84, 122), (103, 132), (123, 134), (137, 126)], G, 16)
         rect((38, 43, 66, 76), 10, G)
@@ -312,8 +344,7 @@ def icon(kind, plate, glyph):
         line([(96, 136), (96, 152)], G, 8)
         line([(78, 152), (114, 152)], G, 8)
     elif kind == 'appmarket':
-        d.polygon([(int(56 * S), int(74 * S)), (int(136 * S), int(74 * S)),
-                   (int(148 * S), int(150 * S)), (int(44 * S), int(150 * S))], fill=G)
+        polygon([(56, 74), (136, 74), (148, 150), (44, 150)], G)
         d.arc(box((76, 46, 116, 86)), 180, 360, fill=G, width=10)
     return im.resize((ICON, ICON), Image.Resampling.LANCZOS)
 
@@ -364,6 +395,75 @@ def res_xml(colors):
     return b'\xef\xbb\xbf<?xml version="1.0" encoding="utf-8"?>\r\n<resources>\r\n' + body.encode() + b'\r\n</resources>\r\n'
 
 
+def font(size, weight_name='Regular'):
+    """Inter (OFL, shipped under themes/vesper/source/fonts) for preview art."""
+    from PIL import ImageFont
+    path = ROOT.parent / 'vesper' / 'source' / 'fonts' / 'Inter-Variable.ttf'
+    try:
+        f = ImageFont.truetype(str(path), size)
+        try:
+            f.set_variation_by_name(weight_name)
+        except Exception:
+            pass
+        return f
+    except OSError:
+        return ImageFont.load_default(size)
+
+
+def argb(c):
+    """'#AARRGGBB' or '#RRGGBB' -> (r, g, b, a)."""
+    h = c.lstrip('#')
+    a = int(h[:2], 16) if len(h) == 8 else 255
+    r, g, b = hex2rgb(c)
+    return (r, g, b, a)
+
+
+def make_mockup(spec, wall0, ico):
+    """Home-screen mockup (540x1140) drawn from the real wallpaper + icons."""
+    MW, MH = 540, 1140
+    canvas = wall0.resize((MW, MH), Image.Resampling.LANCZOS).convert('RGBA')
+    text, sub, accent = hex2rgb(spec['text']), hex2rgb(spec['sub']), spec['accent']
+    d = ImageDraw.Draw(canvas)
+    # clock + date
+    d.text((MW / 2, 118), '9:41', font=font(92, 'Light'), fill=text + (255,), anchor='mm')
+    d.text((MW / 2, 186), 'Monday, 12 November', font=font(24), fill=sub + (255,), anchor='mm')
+    # 4 x 3 grid of the first twelve mapped apps
+    names = ['Phone', 'Contacts', 'Messages', 'Camera', 'Gallery', 'Settings',
+             'Music', 'Browser', 'Clock', 'Calendar', 'Email', 'Files']
+    cell = MW / 4
+    size = 112
+    for i, kind in enumerate(KINDS[:12]):
+        cx = cell * (i % 4) + cell / 2
+        cy = 330 + (i // 4) * 200
+        im = ico[kind].resize((size, size), Image.Resampling.LANCZOS)
+        canvas.alpha_composite(im, (round(cx - size / 2), round(cy - size / 2)))
+        d.text((cx, cy + size / 2 + 26), names[i], font=font(22), fill=text + (235,), anchor='mm')
+    # dock
+    dock = Image.new('RGBA', (MW, MH), (0, 0, 0, 0))
+    dd = ImageDraw.Draw(dock)
+    dd.rounded_rectangle((28, 900, MW - 28, 1040), 46, fill=argb(spec['panel']))
+    canvas.alpha_composite(dock)
+    for j, kind in enumerate(['phone', 'messages', 'browser', 'music']):
+        cx = 28 + (MW - 56) * (j + 0.5) / 4
+        im = ico[kind].resize((92, 92), Image.Resampling.LANCZOS)
+        canvas.alpha_composite(im, (round(cx - 46), 924))
+    return canvas.convert('RGB')
+
+
+def icon_sheet(spec, ico):
+    """Plain icon grid on the theme panel colour (for the repo README)."""
+    sheet = Image.new('RGB', (756, 820), blend(spec['panel'], spec['text'], 0.06))
+    d = ImageDraw.Draw(sheet)
+    d.text((40, 36), spec['title'], font=font(40, 'Medium'), fill=hex2rgb(spec['text']))
+    for i, kind in enumerate(KINDS):
+        x = 28 + (i % 5) * 144
+        y = 120 + (i // 5) * 220
+        im = ico[kind].resize((120, 120), Image.Resampling.LANCZOS)
+        sheet.paste(im, (x + 12, y), im)
+        d.text((x + 72, y + 146), kind.title(), font=font(22), fill=hex2rgb(spec['sub']), anchor='mm')
+    return sheet
+
+
 def build(spec):
     title = spec['title']
     accent = spec['accent']
@@ -379,28 +479,19 @@ def build(spec):
     for b in (wall_bytes, wall1_bytes, lock_bytes):
         assert len(b) < 1000000
 
+    ico = {}
     icons = BytesIO()
     with ZipFile(icons, 'w', ZIP_DEFLATED) as z:
         for kind in KINDS:
             plate = spec['plates'][kind]
             glyph = spec.get('glyphs', {}).get(kind) if spec.get('glyphs') else spec.get('glyph')
-            data = png(icon(kind, plate, glyph))
+            ico[kind] = icon(kind, plate, glyph)
+            data = png(ico[kind])
             for name in MAPPING[kind]:
                 zip_entry(z, name + '.png', data)
                 zip_entry(z, 'icons/' + name + '.png', data)
 
-    sheet = Image.new('RGB', (756, 1428), rgb2hex(blend(panel, text, 0.06)))
-    d = ImageDraw.Draw(sheet)
-    d.text((60, 70), title, fill=hex2rgb(text))
-    cols = 5
-    for i, kind in enumerate(KINDS):
-        x = 28 + (i % cols) * 144
-        y = 160 + (i // cols) * 440
-        plate = spec['plates'][kind]
-        glyph = spec.get('glyphs', {}).get(kind) if spec.get('glyphs') else spec.get('glyph')
-        ic = icon(kind, plate, glyph).resize((96, 96), Image.Resampling.LANCZOS)
-        sheet.paste(ic, (x, y), ic)
-        d.text((x + 18, y + 110), kind.title(), fill=hex2rgb(sub))
+    sheet = make_mockup(spec, wall0, ico)
     sheet_bytes = jpg(sheet, 85)
 
     desc_lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<HwTheme>',
@@ -492,8 +583,8 @@ def build(spec):
         zip_entry(z, 'framework-res-hwext', module_zip([('theme.xml', hwext_xml)]))
 
     # previews for the repo
-    ImageOps.fit(wall0, (540, 1140), Image.Resampling.LANCZOS).save(ROOT / f'{spec["key"]}-preview.jpg', quality=88)
-    sheet.save(ROOT / f'{spec["key"]}-icons.png')
+    make_mockup(spec, wall0, ico).save(ROOT / f'{spec["key"]}-preview.jpg', quality=90)
+    icon_sheet(spec, ico).save(ROOT / f'{spec["key"]}-icons.png')
 
     # ---- self-checks ----
     with ZipFile(out) as z:
